@@ -11,6 +11,8 @@ export interface ToolContext {
   snap: SnapResult | null;
   modifiers: { shift: boolean; ctrl: boolean; alt: boolean };
   previewLayer: Konva.Layer;
+  /** 当前视口缩放比，用于将屏幕像素换算到世界坐标 */
+  viewScale: number;
   /** 通知 Canvas 触发一次预览重绘 */
   requestPreviewRedraw(): void;
 }

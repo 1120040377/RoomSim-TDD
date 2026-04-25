@@ -9,11 +9,13 @@ export interface SnapResult {
   sourceId?: string;
 }
 
+/** 节点（endpoint）吸附半径更大，更易命中转折点 */
+const ENDPOINT_RADIUS_PX = 12;
 const SCREEN_RADIUS_PX = 8;
 
 /**
  * 吸附优先级：endpoint > midpoint > wall 垂足 > grid。
- * radius 以屏幕像素定义（SCREEN_RADIUS_PX），按 viewScale 换算到世界空间 cm。
+ * radius 以屏幕像素定义，按 viewScale 换算到世界空间 cm。
  * viewScale 越小（视图缩得越小）→ 世界半径越大，触发更宽松。
  */
 export function findSnap(
@@ -21,11 +23,12 @@ export function findSnap(
   plan: Plan,
   viewScale: number,
 ): SnapResult | null {
+  const endpointRadius = ENDPOINT_RADIUS_PX / viewScale;
   const radius = SCREEN_RADIUS_PX / viewScale;
 
   // 1. 端点
   for (const node of Object.values(plan.nodes)) {
-    if (distance(worldPoint, node.position) < radius) {
+    if (distance(worldPoint, node.position) < endpointRadius) {
       return { point: { ...node.position }, type: 'endpoint', sourceId: node.id };
     }
   }

@@ -7,6 +7,7 @@ import {
   RemoveWallCommand,
   MoveWallNodeCommand,
   UpdateWallCommand,
+  SplitWallCommand,
 } from '@/modules/commands';
 
 function snap(obj: unknown) {
@@ -230,6 +231,166 @@ describe('Wall commands — do/undo 等价', () => {
 
       cmd.undo();
       expect(store.plan!.walls[add.wallId].thickness).toBe(12);
+    });
+  });
+
+  describe('SplitWallCommand', () => {
+    function addWall(sx: number, sy: number, ex: number, ey: number) {
+      const cmd = new AddWallCommand({
+        start: { x: sx, y: sy },
+        end: { x: ex, y: ey },
+        thickness: 12,
+        height: 280,
+      });
+      cmd.do();
+      return cmd;
+    }
+
+    it('do 后：原墙消失，生成 2 段子墙 + 1 个切割节点', () => {
+      const add = addWall(0, 0, 400, 0);
+      const before = snap(store.plan);
+
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+      cmd.do();
+
+      expect(store.plan!.walls[add.wallId]).toBeUndefined();
+      expect(Object.keys(store.plan!.walls)).toHaveLength(2);
+      expect(Object.keys(store.plan!.nodes)).toHaveLength(3); // A, B, splitNode
+
+      // undo 完整恢复
+      cmd.undo();
+      expect(snap(store.plan)).toEqual(before);
+    });
+
+    it('两段子墙连接正确：wallA end = wallB start = splitNodeId', () => {
+      const add = addWall(0, 0, 400, 0);
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 100, y: 0 } });
+      cmd.do();
+
+      const walls = Object.values(store.plan!.walls);
+      const wallA = walls.find((w) => w.startNodeId === add.usedNodeIds.start);
+      const wallB = walls.find((w) => w.endNodeId === add.usedNodeIds.end);
+
+      expect(wallA).toBeDefined();
+      expect(wallB).toBeDefined();
+      expect(wallA!.endNodeId).toBe(cmd.createdNodeId);
+      expect(wallB!.startNodeId).toBe(cmd.createdNodeId);
+    });
+
+    it('子墙继承原墙的 thickness 和 height', () => {
+      const add = new AddWallCommand({
+        start: { x: 0, y: 0 },
+        end: { x: 400, y: 0 },
+        thickness: 24,
+        height: 300,
+      });
+      add.do();
+
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+      cmd.do();
+
+      for (const w of Object.values(store.plan!.walls)) {
+        expect(w.thickness).toBe(24);
+        expect(w.height).toBe(300);
+      }
+    });
+
+    it('切割节点位置与 splitPoint 一致', () => {
+      const add = addWall(0, 0, 400, 0);
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 150, y: 0 } });
+      cmd.do();
+
+      const node = store.plan!.nodes[cmd.createdNodeId];
+      expect(node).toBeDefined();
+      expect(node.position).toEqual({ x: 150, y: 0 });
+    });
+
+    it('do/undo/redo 三次循环后结构一致', () => {
+      const add = addWall(0, 0, 400, 0);
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+
+      cmd.do();
+      const afterDo = snap(store.plan);
+      cmd.undo();
+      cmd.do();
+      expect(snap(store.plan)).toEqual(afterDo);
+    });
+
+    it('原墙有门窗时：偏移 < splitOffset 归属 wallA，offset 不变', () => {
+      const add = addWall(0, 0, 400, 0);
+      store._addOpening({
+        id: 'op1',
+        kind: 'door',
+        wallId: add.wallId,
+        offset: 80,   // 在切割点 200 之前
+        width: 90,
+        height: 210,
+        sillHeight: 0,
+        hinge: 'start',
+        swing: 'inside',
+      });
+
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+      cmd.do();
+
+      const op = store.plan!.openings['op1'];
+      expect(op).toBeDefined();
+      expect(op.offset).toBe(80);
+
+      const walls = Object.values(store.plan!.walls);
+      const wallA = walls.find((w) => w.startNodeId === add.usedNodeIds.start)!;
+      expect(op.wallId).toBe(wallA.id);
+    });
+
+    it('原墙有门窗时：偏移 >= splitOffset 归属 wallB，offset 减去 splitOffset', () => {
+      const add = addWall(0, 0, 400, 0);
+      store._addOpening({
+        id: 'op2',
+        kind: 'window',
+        wallId: add.wallId,
+        offset: 300,   // 在切割点 200 之后
+        width: 120,
+        height: 100,
+        sillHeight: 80,
+      });
+
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+      cmd.do();
+
+      const op = store.plan!.openings['op2'];
+      expect(op).toBeDefined();
+      expect(op.offset).toBe(100);   // 300 - 200
+
+      const walls = Object.values(store.plan!.walls);
+      const wallB = walls.find((w) => w.endNodeId === add.usedNodeIds.end)!;
+      expect(op.wallId).toBe(wallB.id);
+    });
+
+    it('带门窗的切割 undo 后开洞完整恢复', () => {
+      const add = addWall(0, 0, 400, 0);
+      store._addOpening({
+        id: 'op3',
+        kind: 'door',
+        wallId: add.wallId,
+        offset: 100,
+        width: 90,
+        height: 210,
+        sillHeight: 0,
+        hinge: 'start',
+        swing: 'inside',
+      });
+      const before = snap(store.plan);
+
+      const cmd = new SplitWallCommand({ wallId: add.wallId, splitPoint: { x: 200, y: 0 } });
+      cmd.do();
+      cmd.undo();
+
+      expect(snap(store.plan)).toEqual(before);
+    });
+
+    it('wallId 不存在时 do 不抛错', () => {
+      const cmd = new SplitWallCommand({ wallId: 'nonexistent', splitPoint: { x: 0, y: 0 } });
+      expect(() => cmd.do()).not.toThrow();
     });
   });
 });

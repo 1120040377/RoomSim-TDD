@@ -3,6 +3,7 @@ export { AddWallCommand } from './wall/add';
 export { RemoveWallCommand } from './wall/remove';
 export { MoveWallNodeCommand } from './wall/move-node';
 export { UpdateWallCommand } from './wall/update';
+export { SplitWallCommand } from './wall/split';
 export { AddOpeningCommand } from './opening/add';
 export { RemoveOpeningCommand } from './opening/remove';
 export { MoveOpeningCommand } from './opening/move';

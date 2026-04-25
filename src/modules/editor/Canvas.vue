@@ -25,6 +25,7 @@ let layers: {
   background: Konva.Layer;
   rooms: Konva.Layer;
   walls: Konva.Layer;
+  dimensions: Konva.Layer;
   openings: Konva.Layer;
   furniture: Konva.Layer;
   warnings: Konva.Layer;
@@ -56,6 +57,7 @@ function buildCtx(evt: PointerEvent): ToolContext | null {
     snap,
     modifiers: { shift: evt.shiftKey, ctrl: evt.ctrlKey, alt: evt.altKey },
     previewLayer: layers.preview,
+    viewScale: editorStore.viewport.scale,
     requestPreviewRedraw: () => {
       const ctx = buildCtx(evt);
       if (ctx) redrawPreview(ctx);
@@ -187,6 +189,183 @@ function drawWalls() {
     );
   }
   layers.walls.batchDraw();
+}
+
+function drawDimensions() {
+  if (!layers) return;
+  layers.dimensions.destroyChildren();
+
+  const plan = planStore.plan;
+  const vs = editorStore.viewport.scale;
+
+  if (!editorStore.showDimensions || !plan || Object.keys(plan.nodes).length < 2) {
+    layers.dimensions.batchDraw();
+    return;
+  }
+
+  /** 屏幕像素常量（与缩放无关，视觉大小始终固定） */
+  const OFFSET = 60;    // bbox 外侧偏移
+  const TICK = 5;       // 刻度线半高
+  const LABEL_GAP = 14; // 文字离尺寸线的距离
+  const MERGE = 4;      // 合并阈值（px），小于此值的相邻刻度合并
+  const MIN_SEG = 28;   // 最小段宽（px），短于此不标文字
+  const FONT = 11;      // 字号（px）
+
+  const allNodes = Object.values(plan.nodes);
+  const sPos = allNodes.map((n) => worldToScreen(n.position));
+
+  /** 排序并合并过于接近的坐标 */
+  function dedupe(vals: number[]): number[] {
+    const sorted = [...vals].sort((a, b) => a - b);
+    const result = [sorted[0]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] - result[result.length - 1] > MERGE) result.push(sorted[i]);
+    }
+    return result;
+  }
+
+  /** 屏幕像素 → 米（保留两位小数） */
+  function fmtPx(px: number): string {
+    return `${(px / vs / 100).toFixed(2)} m`;
+  }
+
+  function addTextLabel(
+    text: string,
+    cx: number,
+    cy: number,
+    rotation: number,
+  ) {
+    const t = new Konva.Text({ text, fontSize: FONT, fill: '#374151', padding: 2 });
+    const tw = t.width();
+    const th = t.height();
+    const bg = new Konva.Rect({
+      x: cx - tw / 2 - 1,
+      y: cy - th / 2 - 1,
+      width: tw + 2,
+      height: th + 2,
+      fill: 'rgba(255,255,255,0.92)',
+      cornerRadius: 2,
+      listening: false,
+    });
+    if (rotation !== 0) {
+      bg.rotation(rotation);
+      // 旋转后以 (cx,cy) 为中心：原始中心偏移抵消旋转
+      bg.offsetX(tw / 2 + 1);
+      bg.offsetY(th / 2 + 1);
+      bg.x(cx);
+      bg.y(cy);
+      t.rotation(rotation);
+      t.offsetX(tw / 2);
+      t.offsetY(th / 2);
+      t.x(cx);
+      t.y(cy);
+    } else {
+      bg.x(cx - tw / 2 - 1);
+      bg.y(cy - th / 2 - 1);
+      t.x(cx - tw / 2);
+      t.y(cy - th / 2);
+    }
+    layers!.dimensions.add(bg);
+    layers!.dimensions.add(t);
+  }
+
+  // ── 水平尺寸线（建筑上方） ──
+  const xs = dedupe(sPos.map((p) => p.x));
+  if (xs.length >= 2) {
+    const bboxTop = Math.min(...sPos.map((p) => p.y));
+    const dimY = bboxTop - OFFSET;
+
+    layers.dimensions.add(
+      new Konva.Line({
+        points: [xs[0], dimY, xs[xs.length - 1], dimY],
+        stroke: '#6b7280',
+        strokeWidth: 1,
+        listening: false,
+      }),
+    );
+
+    for (const x of xs) {
+      // 延伸线（虚线）
+      layers.dimensions.add(
+        new Konva.Line({
+          points: [x, bboxTop - 4, x, dimY],
+          stroke: '#d1d5db',
+          strokeWidth: 1,
+          dash: [3, 3],
+          listening: false,
+        }),
+      );
+      // 刻度线
+      layers.dimensions.add(
+        new Konva.Line({
+          points: [x, dimY - TICK, x, dimY + TICK],
+          stroke: '#6b7280',
+          strokeWidth: 1.5,
+          listening: false,
+        }),
+      );
+    }
+
+    for (let i = 0; i < xs.length - 1; i++) {
+      const segPx = xs[i + 1] - xs[i];
+      if (segPx < MIN_SEG) continue;
+      addTextLabel(
+        fmtPx(segPx),
+        (xs[i] + xs[i + 1]) / 2,
+        dimY - LABEL_GAP,
+        0,
+      );
+    }
+  }
+
+  // ── 垂直尺寸线（建筑左侧） ──
+  const ys = dedupe(sPos.map((p) => p.y));
+  if (ys.length >= 2) {
+    const bboxLeft = Math.min(...sPos.map((p) => p.x));
+    const dimX = bboxLeft - OFFSET;
+
+    layers.dimensions.add(
+      new Konva.Line({
+        points: [dimX, ys[0], dimX, ys[ys.length - 1]],
+        stroke: '#6b7280',
+        strokeWidth: 1,
+        listening: false,
+      }),
+    );
+
+    for (const y of ys) {
+      layers.dimensions.add(
+        new Konva.Line({
+          points: [bboxLeft - 4, y, dimX, y],
+          stroke: '#d1d5db',
+          strokeWidth: 1,
+          dash: [3, 3],
+          listening: false,
+        }),
+      );
+      layers.dimensions.add(
+        new Konva.Line({
+          points: [dimX - TICK, y, dimX + TICK, y],
+          stroke: '#6b7280',
+          strokeWidth: 1.5,
+          listening: false,
+        }),
+      );
+    }
+
+    for (let i = 0; i < ys.length - 1; i++) {
+      const segPx = ys[i + 1] - ys[i];
+      if (segPx < MIN_SEG) continue;
+      addTextLabel(
+        fmtPx(segPx),
+        dimX - LABEL_GAP,
+        (ys[i] + ys[i + 1]) / 2,
+        -90,
+      );
+    }
+  }
+
+  layers.dimensions.batchDraw();
 }
 
 function drawOpenings() {
@@ -365,6 +544,7 @@ function drawAll() {
   drawBackground();
   drawRooms();
   drawWalls();
+  drawDimensions();
   drawOpenings();
   drawFurniture();
   drawWarnings();
@@ -471,6 +651,10 @@ function setupWatchers() {
     () => editorStore.showErgonomics,
     () => drawWarnings(),
   );
+  watch(
+    () => editorStore.showDimensions,
+    () => drawDimensions(),
+  );
 }
 
 onMounted(() => {
@@ -483,6 +667,7 @@ onMounted(() => {
     background: new Konva.Layer(),
     rooms: new Konva.Layer(),
     walls: new Konva.Layer(),
+    dimensions: new Konva.Layer(),
     openings: new Konva.Layer(),
     furniture: new Konva.Layer(),
     warnings: new Konva.Layer(),

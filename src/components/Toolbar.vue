@@ -63,6 +63,14 @@ const tools: Array<{ name: ToolName; label: string; key: string }> = [
         导出 JSON
       </button>
       <button
+        class="px-2 py-1 text-sm rounded border border-gray-300 hover:bg-gray-50"
+        :class="editor.showDimensions ? 'bg-gray-100 font-medium' : ''"
+        title="切换尺寸线显示"
+        @click="editor.showDimensions = !editor.showDimensions"
+      >
+        尺寸
+      </button>
+      <button
         class="w-7 h-7 text-sm rounded border border-gray-300 hover:bg-gray-50"
         title="快捷键 (?)"
         @click="$emit('help')"

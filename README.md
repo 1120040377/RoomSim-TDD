@@ -116,10 +116,9 @@ tests/unit/                 # 按模块镜像
 
 仓库里 [.github/workflows/deploy.yml](.github/workflows/deploy.yml) 是开箱即用的工作流：push 到 `main` 触发 → typecheck + 单测 + build + 发布。
 
-**首次启用**：
-1. push 到 GitHub 仓库的 `main` 分支
-2. 仓库 → Settings → Pages → **Source 选 "GitHub Actions"**
-3. 等第一次 workflow 跑完，访问 `https://<user>.github.io/<repo>/`
+**启用**：push 到 `main` 即可。workflow 里 `actions/configure-pages` 用了 `enablement: true`，会在仓库未开启 Pages 时自动启用并把 Source 设为 GitHub Actions，不必手动到 Settings 配置。
+
+第一次跑完后访问 `https://<user>.github.io/<repo>/`。
 
 构建会通过环境变量 `BASE_URL=/<repo>/` 注入到 Vite，资源引用自动加前缀。本地 `pnpm dev` / `pnpm build` 不受影响（默认 `/`）。
 
