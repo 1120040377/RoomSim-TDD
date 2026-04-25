@@ -5,6 +5,8 @@ import UnoCSS from 'unocss/vite';
 import { fileURLToPath, URL } from 'node:url';
 
 export default defineConfig({
+  // 默认根路径；GitHub Pages 等子目录部署时由 CI 通过 BASE_URL 注入 "/<repo>/"
+  base: process.env.BASE_URL ?? '/',
   plugins: [vue(), UnoCSS()],
   server: {
     port: 5174,

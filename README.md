@@ -110,23 +110,31 @@ tests/unit/                 # 按模块镜像
 
 ## 部署
 
-纯静态，任何支持托管的平台都行：
+纯静态，任何支持托管的平台都行。路由用 `createWebHashHistory`（URL 里有 `#`），所以不需要 SPA rewrite，子目录部署也无需配 fallback。
 
-**Vercel**
+### GitHub Pages（推荐 · 已配 CI）
+
+仓库里 [.github/workflows/deploy.yml](.github/workflows/deploy.yml) 是开箱即用的工作流：push 到 `main` 触发 → typecheck + 单测 + build + 发布。
+
+**首次启用**：
+1. push 到 GitHub 仓库的 `main` 分支
+2. 仓库 → Settings → Pages → **Source 选 "GitHub Actions"**
+3. 等第一次 workflow 跑完，访问 `https://<user>.github.io/<repo>/`
+
+构建会通过环境变量 `BASE_URL=/<repo>/` 注入到 Vite，资源引用自动加前缀。本地 `pnpm dev` / `pnpm build` 不受影响（默认 `/`）。
+
+### Vercel
 ```bash
 pnpm build
-# 把 dist/ 上传到 Vercel，或连接 git 自动部署
-# 注意：routes 使用 createWebHashHistory，URL 里有 #，无需 SPA rewrite 配置
+# 把 dist/ 上传，或连 git 自动部署。base 默认 / 即可。
 ```
 
-**GitHub Pages**
+### 任意静态托管 / OSS
 ```bash
 pnpm build
-# push dist/ 到 gh-pages 分支
-# 或用 actions/deploy-pages
+# 上传 dist/，把 index.html 作为默认首页
+# 子目录部署时：BASE_URL=/sub/ pnpm build
 ```
-
-**任意 OSS**：上传 `dist/`，配置 index.html 作为默认首页即可。
 
 ## 已知限制（P1+）
 
