@@ -14,6 +14,8 @@ import HelpOverlay from '@/components/HelpOverlay.vue';
 import {
   RemoveFurnitureCommand,
   DuplicateFurnitureCommand,
+  RemoveWallCommand,
+  RemoveOpeningCommand,
 } from '@/modules/commands';
 
 const props = defineProps<{ id: string }>();
@@ -72,12 +74,24 @@ function onKeyDown(e: KeyboardEvent) {
     historyStore.redo();
     return;
   }
-  // Del 删除选中家具
+  // Del 删除选中对象
   if (e.key === 'Delete' || e.key === 'Backspace') {
     const sel = editorStore.selection[0];
     if (sel?.kind === 'furniture') {
       e.preventDefault();
       historyStore.execute(new RemoveFurnitureCommand(sel.id));
+      editorStore.clearSelection();
+      return;
+    }
+    if (sel?.kind === 'wall') {
+      e.preventDefault();
+      historyStore.execute(new RemoveWallCommand(sel.id));
+      editorStore.clearSelection();
+      return;
+    }
+    if (sel?.kind === 'opening') {
+      e.preventDefault();
+      historyStore.execute(new RemoveOpeningCommand(sel.id));
       editorStore.clearSelection();
       return;
     }

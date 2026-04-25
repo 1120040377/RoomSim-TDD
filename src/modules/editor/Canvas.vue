@@ -8,7 +8,7 @@ import { TOOLS } from './tools';
 import type { ToolContext } from './tools';
 import { findSnap } from '@/modules/geometry/snap';
 import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
-import { MoveFurnitureCommand } from '@/modules/commands';
+import { MoveFurnitureCommand, MoveOpeningCommand } from '@/modules/commands';
 import { createDefaultEngine, type Warning } from '@/modules/ergonomics';
 import { debounce } from 'lodash-es';
 
@@ -33,6 +33,17 @@ let layers: {
 } | null = null;
 
 let resizeObserver: ResizeObserver | null = null;
+
+/** 门窗沿墙拖拽状态 */
+let draggingOpening: {
+  id: string;
+  startNode: { x: number; y: number };
+  endNode: { x: number; y: number };
+  wallLenSq: number;
+  wallLen: number;
+  halfWidth: number;
+  currentOffset: number;
+} | null = null;
 
 function worldToScreen(p: { x: number; y: number }) {
   const v = editorStore.viewport;
@@ -173,20 +184,29 @@ function drawWalls() {
   layers.walls.destroyChildren();
   const plan = planStore.plan;
   if (!plan) return;
+  const selectedIds = new Set(
+    editorStore.selection.filter((t) => t.kind === 'wall').map((t) => t.id),
+  );
   for (const wall of Object.values(plan.walls)) {
     const s = plan.nodes[wall.startNodeId];
     const e = plan.nodes[wall.endNodeId];
     if (!s || !e) continue;
     const ss = worldToScreen(s.position);
     const ee = worldToScreen(e.position);
-    layers.walls.add(
-      new Konva.Line({
-        points: [ss.x, ss.y, ee.x, ee.y],
-        stroke: '#374151',
-        strokeWidth: Math.max(2, wall.thickness * editorStore.viewport.scale),
-        lineCap: 'round',
-      }),
-    );
+    const isSelected = selectedIds.has(wall.id);
+    const visualWidth = Math.max(2, wall.thickness * editorStore.viewport.scale);
+    const line = new Konva.Line({
+      points: [ss.x, ss.y, ee.x, ee.y],
+      stroke: isSelected ? '#3b82f6' : '#374151',
+      strokeWidth: visualWidth + (isSelected ? 1 : 0),
+      lineCap: 'round',
+      hitStrokeWidth: Math.max(10, visualWidth),
+    });
+    line.on('click tap', (evt) => {
+      if (editorStore.activeTool !== 'select') return;
+      editorStore.select({ kind: 'wall', id: wall.id }, evt.evt.shiftKey);
+    });
+    layers.walls.add(line);
   }
   layers.walls.batchDraw();
 }
@@ -373,6 +393,9 @@ function drawOpenings() {
   layers.openings.destroyChildren();
   const plan = planStore.plan;
   if (!plan) return;
+  const selectedIds = new Set(
+    editorStore.selection.filter((t) => t.kind === 'opening').map((t) => t.id),
+  );
   for (const op of Object.values(plan.openings)) {
     const wall = plan.walls[op.wallId];
     if (!wall) continue;
@@ -393,15 +416,35 @@ function drawOpenings() {
     const right = { x: center.x + (ux * op.width) / 2, y: center.y + (uy * op.width) / 2 };
     const ls = worldToScreen(left);
     const rs = worldToScreen(right);
-    const color = op.kind === 'door' ? '#f59e0b' : '#0ea5e9';
-    layers.openings.add(
-      new Konva.Line({
-        points: [ls.x, ls.y, rs.x, rs.y],
-        stroke: color,
-        strokeWidth: 4,
-        lineCap: 'square',
-      }),
-    );
+    const isSelected = selectedIds.has(op.id);
+    const baseColor = op.kind === 'door' ? '#f59e0b' : '#0ea5e9';
+    const line = new Konva.Line({
+      points: [ls.x, ls.y, rs.x, rs.y],
+      stroke: isSelected ? '#3b82f6' : baseColor,
+      strokeWidth: isSelected ? 6 : 4,
+      lineCap: 'square',
+      hitStrokeWidth: 12,
+    });
+    line.on('click tap', (evt) => {
+      if (editorStore.activeTool !== 'select') return;
+      editorStore.select({ kind: 'opening', id: op.id }, evt.evt.shiftKey);
+      evt.cancelBubble = true;
+    });
+    line.on('pointerdown', (evt) => {
+      if (editorStore.activeTool !== 'select' || evt.evt.button !== 0) return;
+      editorStore.select({ kind: 'opening', id: op.id }, false);
+      draggingOpening = {
+        id: op.id,
+        startNode: sNode.position,
+        endNode: eNode.position,
+        wallLenSq: len * len,
+        wallLen: len,
+        halfWidth: op.width / 2,
+        currentOffset: op.offset,
+      };
+      evt.cancelBubble = true;
+    });
+    layers.openings.add(line);
   }
   layers.openings.batchDraw();
 }
@@ -566,6 +609,7 @@ function setupEvents() {
   stage.on('pointermove', (e) => {
     const ctx = buildCtx(e.evt);
     if (!ctx) return;
+    if (draggingOpening) return; // 由 window pointermove 统一处理
     TOOLS[editorStore.activeTool].onPointerMove?.(e.evt, ctx);
     redrawPreview(ctx);
   });
@@ -605,16 +649,37 @@ function setupEvents() {
     }
   });
   const onMove = (e: PointerEvent) => {
-    if (!panning) return;
-    editorStore.setViewport({
-      offset: {
-        x: offsetStart.x + (e.clientX - panStart.x),
-        y: offsetStart.y + (e.clientY - panStart.y),
-      },
-    });
+    if (panning) {
+      editorStore.setViewport({
+        offset: {
+          x: offsetStart.x + (e.clientX - panStart.x),
+          y: offsetStart.y + (e.clientY - panStart.y),
+        },
+      });
+      return;
+    }
+    if (draggingOpening) {
+      const containerEl = containerRef.value;
+      if (!containerEl) return;
+      const rect = containerEl.getBoundingClientRect();
+      const world = screenToWorld({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      const { startNode, endNode, wallLenSq, wallLen, halfWidth, id } = draggingOpening;
+      const ddx = endNode.x - startNode.x;
+      const ddy = endNode.y - startNode.y;
+      const wx = world.x - startNode.x;
+      const wy = world.y - startNode.y;
+      const t = (wx * ddx + wy * ddy) / wallLenSq;
+      const rawOffset = t * wallLen;
+      const newOffset = Math.max(halfWidth, Math.min(wallLen - halfWidth, rawOffset));
+      if (Math.abs(newOffset - draggingOpening.currentOffset) > 0.5) {
+        historyStore.execute(new MoveOpeningCommand(id, draggingOpening.currentOffset, newOffset));
+        draggingOpening.currentOffset = newOffset;
+      }
+    }
   };
   const onUp = () => {
     panning = false;
+    draggingOpening = null;
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
@@ -644,7 +709,11 @@ function setupWatchers() {
   );
   watch(
     () => editorStore.selection,
-    () => drawFurniture(),
+    () => {
+      drawWalls();
+      drawOpenings();
+      drawFurniture();
+    },
     { deep: true },
   );
   watch(
