@@ -1,148 +1,172 @@
 # RoomSim
 
-浏览器内的"装修前空间感知模拟器"。2D 俯视画户型、摆家具 → 一键切 3D 第一人称走一遍，判断实际入住是否舒适。技术设计详见 [RoomSim-TDD.md](./RoomSim-TDD.md)。
+**A browser-based "pre-renovation spatial comfort simulator."**  
+Draw a floor plan in 2D top-down view, place furniture → switch to 3D first-person walkthrough to judge whether the space actually feels comfortable to live in.
 
-## 快速开始
+**Live Demo:** [https://1120040377.github.io/RoomSim-TDD/](https://1120040377.github.io/RoomSim-TDD/)  
+**中文文档:** [README.zh.md](./README.zh.md)
+
+For technical design details, see [RoomSim-TDD.md](./RoomSim-TDD.md).
+
+---
+
+### Who Is This For?
+
+**You just got the keys to a new place — but the furniture isn't there yet.**  
+You have a sofa, a bed, and a wardrobe on order, and you're staring at an empty room wondering if everything will actually fit and still leave room to walk. Draw the floor plan in RoomSim, place the furniture, walk through it in first-person — before anything arrives.
+
+**Cooking: fridge → prep → stove → sink.**  
+Will the kitchen triangle flow naturally, or will you be doing laps? Will two people cooking at the same time collide? Simulate the full path from grabbing ingredients to washing up, and spot unnecessary back-and-forth before the cabinets are installed.
+
+**3 a.m. bathroom run — in the dark.**  
+From the edge of the bed to the bathroom door, will you clip a bed corner or squeeze past the wardrobe? Walk the night-time route in RoomSim's first-person view and make sure there's nothing in the way.
+
+**Working in the study — stepping out for water or a bathroom break.**  
+If the study is the innermost room in a two-bedroom apartment, how many steps and tight squeezes does every break involve? Verify the corridor is wide enough before the walls go up.
+
+---
+
+### Quick Start
 
 ```bash
 pnpm install
 pnpm dev          # http://localhost:5174/
-pnpm test         # Vitest 全量单测（当前 124 tests）
+pnpm test         # Vitest full unit tests (currently 124 tests)
 pnpm typecheck    # vue-tsc
-pnpm build        # 生产打包到 dist/
-pnpm preview      # 预览 dist
+pnpm build        # Production build to dist/
+pnpm preview      # Preview dist
 ```
 
-> **Windows 环境提示**：如果看到 `Cannot find module @rollup/rollup-win32-x64-msvc` 或 `Application Control policy has blocked` 等错误，本项目已通过 `package.json` 的 `pnpm.overrides` 把 rollup 替换为 `@rollup/wasm-node`（纯 JS）绕开。重新 `pnpm install` 即可。
+> **Windows note:** If you see `Cannot find module @rollup/rollup-win32-x64-msvc` or `Application Control policy has blocked`, this project already replaces rollup with `@rollup/wasm-node` (pure JS) via `pnpm.overrides` in `package.json`. Re-run `pnpm install` to fix it.
 >
-> 若 `vue-tsc` 报 `Search string not found: "/supportedTSExtensions = .*(?=;)/"`，说明 vue-tsc 版本与 TypeScript 不匹配，保持 `vue-tsc ^2.0.0` 与 `typescript ^5.3.0` 组合。
+> If `vue-tsc` reports `Search string not found: "/supportedTSExtensions = .*(?=;)/"`, it means vue-tsc and TypeScript versions are mismatched — keep `vue-tsc ^2.0.0` with `typescript ^5.3.0`.
 
-## 功能清单（P0）
+### Features (P0)
 
-**编辑器（2D 俯视）**
-- 画墙、矩形一键房间、门/窗吸附到墙放置
-- 家具库 30 种 + 拖拽放置 + 属性面板（尺寸/颜色/旋转/复制/删除）
-- 房间自动识别（平面图面遍历算法）
-- 端点 / 墙中点 / 墙垂足 / 网格 四级吸附
-- 撤销/重做（50 步，连续拖动自动合并）
-- 人体工学警告 8 条规则（过道/沙发/床周/厨房三角/门开启区域/墙高…）
-- 自动保存 IndexedDB（5s debounce）+ JSON 导入导出
+**Editor (2D top-down)**
+- Draw walls, one-click rectangular room, doors/windows snap to walls
+- Furniture library with 30+ items, drag-to-place, property panel (size / color / rotation / copy / delete)
+- Automatic room detection (flood-fill algorithm on the floor plan)
+- 4-level snapping: endpoint / wall midpoint / wall perpendicular / grid
+- Undo/redo (50 steps, continuous drag auto-merge)
+- Ergonomic warnings: 8 rules (clearance / sofa / bed surround / kitchen triangle / door swing / wall height…)
+- Auto-save to IndexedDB (5s debounce) + JSON import/export
 
-**3D 漫游**
-- 第一人称 WASD + 鼠标（PointerLock），Shift 跑步
-- 墙体带开洞（门/窗几何切段）+ 地板 + 家具 Box + 轮廓
-- 圆-OBB 碰撞（防穿墙，sweep 细分避免隧穿）
-- E 键交互：开关门 90° 动画、开关灯（PointLight intensity）
-- 身高 140–200cm 实时调节
-- 屏幕中心射线检测 + HUD 提示
+**3D Walkthrough**
+- First-person WASD + mouse (PointerLock), Shift to run
+- Walls with openings (door/window geometric clipping) + floor + furniture boxes + outlines
+- Circle-OBB collision (anti-clipping, sweep subdivision to prevent tunneling)
+- E key interaction: toggle door 90° animation, toggle lights (PointLight intensity)
+- Height adjustment 140–200 cm in real time
+- Center-screen ray detection + HUD hints
 
-**模板**：空白 / 主卧 18㎡ / 一室一厅 50㎡ / 两室一厅 70㎡ / 开放式厨房 12㎡
+**Templates:** Blank / Master bedroom 18㎡ / Studio 50㎡ / 2-bed 70㎡ / Open kitchen 12㎡
 
-## 快捷键
+### Keyboard Shortcuts
 
-编辑器：`V` 选择 · `W` 画墙 · `R` 矩形房间 · `D` 门 · `I` 窗 · `Esc` 取消 · `Ctrl+Z/Y` 撤销重做 · `Ctrl+D` 复制 · `Del` 删除 · `?` 快捷键帮助
+**Editor:** `V` select · `W` draw wall · `R` rectangular room · `D` door · `I` window · `Esc` cancel · `Ctrl+Z/Y` undo/redo · `Ctrl+D` copy · `Del` delete · `?` shortcut help
 
-漫游：`WASD` 移动 · `Shift` 跑步 · `E` 交互 · `Esc` 退出
+**Walkthrough:** `WASD` move · `Shift` run · `E` interact · `Esc` exit
 
-## 架构
+### Architecture
 
 ```
 Vue 3.4 + TypeScript 5 + Vite 5
-├── 2D 渲染：Konva.js 9（6 层 Stage/Layer 架构）
-├── 3D 渲染：Three.js 0.160（原生 API，未经 TresJS）
-├── 状态：Pinia 2 + shallowRef + 命令模式（20+ 命令，do/undo 完全可撤销）
-├── 存储：Dexie 4（IndexedDB）+ Zod schema 校验
-└── 样式：UnoCSS
+├── 2D rendering: Konva.js 9 (6-layer Stage/Layer architecture)
+├── 3D rendering: Three.js 0.160 (native API, no TresJS)
+├── State: Pinia 2 + shallowRef + command pattern (20+ commands, fully reversible do/undo)
+├── Storage: Dexie 4 (IndexedDB) + Zod schema validation
+└── Styles: UnoCSS
 ```
 
-**分层原则**：`geometry/` 全是纯函数（无 Vue / 无 Konva / 无 Three.js 依赖），100% 测试覆盖；`store` 持有状态，UI 只读+派发命令；`editor` 和 `walkthrough` 都订阅同一份 Plan。
+**Layering principle:** `geometry/` contains pure functions only (no Vue / Konva / Three.js dependencies), 100% test coverage; `store` holds state, UI is read-only and dispatches commands; both `editor` and `walkthrough` subscribe to the same Plan.
 
-**2D↔3D 坐标约定**（锁死在 [walkthrough/coord.ts](src/modules/walkthrough/coord.ts) 并有测试保护）：
+**2D↔3D coordinate convention** (locked in [walkthrough/coord.ts](src/modules/walkthrough/coord.ts) with test protection):
 ```
 editor (x, y)  ⇒  three (x, heightZ_cm, y) × 0.01   // cm → m
 editor angle   ⇒  three.rotation.y = -angle
 ```
 
-## 测试
+### Testing
 
 ```bash
-pnpm test              # Vitest 单测（当前 124 pass）
-pnpm test -- <pattern> # 筛选
-pnpm test:watch        # 监视模式
-pnpm e2e:install       # 首次跑 e2e 前下载 Chromium (~111MB)
-pnpm e2e               # Playwright 冒烟 3 条核心路径
+pnpm test              # Vitest unit tests (currently 124 pass)
+pnpm test -- <pattern> # Filter tests
+pnpm test:watch        # Watch mode
+pnpm e2e:install       # Download Chromium before first e2e run (~111MB)
+pnpm e2e               # Playwright smoke tests for 3 core paths
 ```
 
-**单测覆盖**（`tests/unit/`）：
-- `geometry/`：opening-cut / collision（slide）/ room-detect / snap / nearest-wall
-- `commands/`：do ↔ undo 深度等价，连续 Move/Rotate 合并
-- `store/history`：栈管理 + 合并 + 容量限制 + BatchCommand
-- `walkthrough/`：coord 换算约束 + WallBuilder slab 数 + CollisionBuilder
-- `ergonomics/`：8 条规则各自的正/反例 fixture
-- `templates/`：模板都通过 PlanSchema
-- `model/schema`：Zod 校验
-- `storage/migrations`：版本迁移骨架
+**Unit test coverage** (`tests/unit/`):
+- `geometry/`: opening-cut / collision (slide) / room-detect / snap / nearest-wall
+- `commands/`: do ↔ undo deep equivalence, continuous Move/Rotate merge
+- `store/history`: stack management + merge + capacity limit + BatchCommand
+- `walkthrough/`: coord conversion constraints + WallBuilder slab count + CollisionBuilder
+- `ergonomics/`: positive/negative fixtures for each of the 8 rules
+- `templates/`: all templates pass PlanSchema
+- `model/schema`: Zod validation
+- `storage/migrations`: version migration skeleton
 
-**E2E 覆盖**（`tests/e2e/smoke.spec.ts`）：
-1. 模板 → 编辑器 → 返回列表 → 刷新后方案还在
-2. 模板 → 进入漫游 → canvas 渲染 + 身高调节可见
-3. 导入损坏 JSON → 错误提示 → 原方案不变
+**E2E coverage** (`tests/e2e/smoke.spec.ts`):
+1. Template → editor → back to list → plan still present after refresh
+2. Template → enter walkthrough → canvas renders + height control visible
+3. Import corrupted JSON → error prompt → original plan unchanged
 
-## 目录结构
+### Directory Structure
 
 ```
 src/
-├── views/                  # 三个页面（Home / Editor / Walkthrough）
+├── views/                  # Three pages (Home / Editor / Walkthrough)
 ├── components/             # Toolbar / FurniturePanel / PropertyPanel / HelpOverlay
 ├── modules/
 │   ├── model/              # types + Zod schema + defaults
-│   ├── store/              # Pinia（plan / editor / history）
-│   ├── commands/           # 14 个命令，按 wall/opening/furniture 分包
-│   ├── geometry/           # 纯几何算法
-│   ├── editor/             # Konva Canvas + 工具策略模式
-│   ├── walkthrough/        # Three.js builders + FPS 控制器 + 碰撞
-│   ├── ergonomics/         # 规则引擎 + 8 条规则
-│   ├── storage/            # Dexie + 导入导出 + 迁移
-│   └── templates/          # 家具 catalog + 户型模板
+│   ├── store/              # Pinia (plan / editor / history)
+│   ├── commands/           # 14 commands, grouped by wall/opening/furniture
+│   ├── geometry/           # Pure geometry algorithms
+│   ├── editor/             # Konva Canvas + tool strategy pattern
+│   ├── walkthrough/        # Three.js builders + FPS controller + collision
+│   ├── ergonomics/         # Rule engine + 8 rules
+│   ├── storage/            # Dexie + import/export + migrations
+│   └── templates/          # Furniture catalog + floor plan templates
 └── styles/
-tests/unit/                 # 按模块镜像
+tests/unit/                 # Mirrors module structure
 ```
 
-## 部署
+### Deployment
 
-纯静态，任何支持托管的平台都行。路由用 `createWebHashHistory`（URL 里有 `#`），所以不需要 SPA rewrite，子目录部署也无需配 fallback。
+Pure static site — any hosting platform works. Routing uses `createWebHashHistory` (URL contains `#`), so no SPA rewrite rules are needed; subdirectory deployment requires no fallback config.
 
-### GitHub Pages（推荐 · 已配 CI）
+#### GitHub Pages (recommended · CI configured)
 
-仓库里 [.github/workflows/deploy.yml](.github/workflows/deploy.yml) 是开箱即用的工作流：push 到 `main` 触发 → typecheck + 单测 + build + 发布。
+[.github/workflows/deploy.yml](.github/workflows/deploy.yml) is a ready-to-use workflow: push to `main` triggers → typecheck + unit tests + build + publish.
 
-**启用**：push 到 `main` 即可。workflow 里 `actions/configure-pages` 用了 `enablement: true`，会在仓库未开启 Pages 时自动启用并把 Source 设为 GitHub Actions，不必手动到 Settings 配置。
+**Activate:** just push to `main`. The workflow uses `actions/configure-pages` with `enablement: true`, which automatically enables Pages and sets Source to GitHub Actions if not already configured — no manual Settings changes needed.
 
-第一次跑完后访问 `https://<user>.github.io/<repo>/`。
+After the first run, visit `https://<user>.github.io/<repo>/`.
 
-构建会通过环境变量 `BASE_URL=/<repo>/` 注入到 Vite，资源引用自动加前缀。本地 `pnpm dev` / `pnpm build` 不受影响（默认 `/`）。
+The build injects `BASE_URL=/<repo>/` into Vite via environment variable; asset references are prefixed automatically. Local `pnpm dev` / `pnpm build` are unaffected (defaults to `/`).
 
-### Vercel
+#### Vercel
 ```bash
 pnpm build
-# 把 dist/ 上传，或连 git 自动部署。base 默认 / 即可。
+# Upload dist/, or connect git for automatic deployment. base defaults to /.
 ```
 
-### 任意静态托管 / OSS
+#### Any Static Host / OSS
 ```bash
 pnpm build
-# 上传 dist/，把 index.html 作为默认首页
-# 子目录部署时：BASE_URL=/sub/ pnpm build
+# Upload dist/, set index.html as the default page.
+# Subdirectory deployment: BASE_URL=/sub/ pnpm build
 ```
 
-## 已知限制（P1+）
+### Known Limitations (P1+)
 
-- **墙拆分**：内墙端点落在外墙中段时，`detectRooms` 识别不到子房间（两室一厅模板目前识别为 1 个大房间）。编辑器画墙时同样会遇到，未来需要 `splitWallsAtHangingNodes` 自动拆墙。
-- **MobileFPS**：移动端摇杆/滑屏转视角还没做，移动端只能用编辑器。
-- **电视**：VideoTexture 播放视频未实现，E 键占位。
-- **选中墙/门窗**：PropertyPanel 目前只对家具生效。
-- **InstancedMesh**：家具数超过 100 时可合批优化。
+- **Wall splitting:** when an interior wall endpoint lands on the middle of an exterior wall, `detectRooms` cannot identify sub-rooms (the 2-bed template currently detects as 1 large room). Requires a future `splitWallsAtHangingNodes` pass.
+- **Mobile FPS:** virtual joystick / swipe-to-look not implemented; mobile is editor-only.
+- **TV:** VideoTexture video playback not implemented, E key is a placeholder.
+- **Wall/door/window selection:** PropertyPanel currently only works for furniture.
+- **InstancedMesh:** when furniture count exceeds 100, batching optimization is possible.
 
-## License
+### License
 
-个人装修工具项目。未声明 License。
+Personal renovation tool project. No license declared.

@@ -7,7 +7,8 @@ export type FurnitureCategory =
   | 'kitchen'
   | 'bathroom'
   | 'office'
-  | 'lighting';
+  | 'lighting'
+  | 'person';
 
 export type InteractiveKind = 'door' | 'light' | 'switch' | 'tv';
 export type MountPoint = 'floor' | 'wall' | 'ceiling';
@@ -65,6 +66,10 @@ export const FURNITURE_CATALOG: Record<FurnitureType, FurnitureDef> = {
   'lamp-floor': { name: '落地灯', size: { width: 40, depth: 40, height: 160 }, interactive: 'light', category: 'lighting' },
   'lamp-wall': { name: '壁灯', size: { width: 20, depth: 15, height: 30 }, wallAligned: true, mountPoint: 'wall', interactive: 'light', category: 'lighting' },
   switch: { name: '墙面开关', size: { width: 8, depth: 2, height: 8 }, wallAligned: true, mountPoint: 'wall', interactive: 'switch', category: 'lighting' },
+
+  // 人物参考
+  'person-standing': { name: '站立人物', size: { width: 45, depth: 30, height: 170 }, defaultColor: '#4a6fa5', category: 'person' },
+  'person-sitting':  { name: '坐姿人物', size: { width: 45, depth: 60, height: 90  }, defaultColor: '#c0516e', category: 'person' },
 };
 
 export const FURNITURE_BY_CATEGORY: Record<FurnitureCategory, FurnitureType[]> = (() => {
@@ -76,6 +81,7 @@ export const FURNITURE_BY_CATEGORY: Record<FurnitureCategory, FurnitureType[]> =
     bathroom: [],
     office: [],
     lighting: [],
+    person: [],
   } as Record<FurnitureCategory, FurnitureType[]>;
   for (const [type, def] of Object.entries(FURNITURE_CATALOG) as Array<[FurnitureType, FurnitureDef]>) {
     out[def.category].push(type);

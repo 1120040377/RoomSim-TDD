@@ -95,7 +95,9 @@ export type FurnitureType =
   | 'lamp-ceiling'
   | 'lamp-floor'
   | 'lamp-wall'
-  | 'switch';
+  | 'switch'
+  | 'person-standing'
+  | 'person-sitting';
 
 export interface FurnitureSize {
   width: Cm; // X

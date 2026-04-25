@@ -10,6 +10,7 @@ import { buildFridge, buildStove, buildSink, buildKitchenCounter } from './furni
 import { buildToilet, buildBasin, buildShower, buildBathtub } from './furniture/bathroom';
 import { buildDesk, buildOfficeChair } from './furniture/office';
 import { buildLampCeiling, buildLampFloor, buildLampWall, buildSwitch } from './furniture/lighting';
+import { buildPersonStanding, buildPersonSitting } from './furniture/person';
 
 const BUILDERS: Record<FurnitureType, FurnitureBuilderFn> = {
   'bed-single':       buildBedSingle,
@@ -43,6 +44,8 @@ const BUILDERS: Record<FurnitureType, FurnitureBuilderFn> = {
   'lamp-floor':       buildLampFloor,
   'lamp-wall':        buildLampWall,
   switch:             buildSwitch,
+  'person-standing':  buildPersonStanding,
+  'person-sitting':   buildPersonSitting,
 };
 
 export function buildFurniture(plan: Plan): Group {

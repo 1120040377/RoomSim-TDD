@@ -23,6 +23,7 @@ import { DesktopFPS } from '@/modules/walkthrough/controls/DesktopFPS';
 import { getSpawnPoint } from '@/modules/walkthrough/spawn';
 import { CM_TO_M } from '@/modules/walkthrough/coord';
 import { InteractionRaycaster, toggleDoor, type InteractableInfo } from '@/modules/walkthrough/interaction';
+import { buildFirstPersonArms } from '@/modules/walkthrough/builders/arms-builder';
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
@@ -40,6 +41,7 @@ let camera: PerspectiveCamera | null = null;
 let controller: DesktopFPS | null = null;
 let raycaster: InteractionRaycaster | null = null;
 let doorPivots: Record<string, Group> = {};
+let fpArms: Group | null = null;
 let lightsByFurnitureId: Record<string, PointLight> = {};
 let allLights: PointLight[] = [];
 let rafId = 0;
@@ -77,6 +79,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   cancelAnimationFrame(rafId);
+  if (fpArms && camera) camera.remove(fpArms);
+  fpArms = null;
   controller?.dispose();
   renderer?.dispose();
   renderer?.forceContextLoss?.();
@@ -132,6 +136,9 @@ function initScene() {
   controller.attach();
 
   raycaster = new InteractionRaycaster(camera, scene);
+
+  fpArms = buildFirstPersonArms();
+  camera.add(fpArms);
 }
 
 function tick(t: number) {

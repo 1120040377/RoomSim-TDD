@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BUILT_IN_TEMPLATES } from '@/modules/templates/built-in';
+import { BUILT_IN_TEMPLATES } from '@/modules/templates/index';
 import { PlanSchema } from '@/modules/model/schema';
 
 describe('BUILT_IN_TEMPLATES', () => {

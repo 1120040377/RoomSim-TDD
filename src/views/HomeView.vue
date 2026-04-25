@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { planRepo } from '@/modules/storage/plan-repo';
 import { importPlanFromFile } from '@/modules/storage/io';
-import { BUILT_IN_TEMPLATES } from '@/modules/templates/built-in';
+import { BUILT_IN_TEMPLATES } from '@/modules/templates/index';
 import type { PlanRecord } from '@/modules/storage/db';
 
 const router = useRouter();
