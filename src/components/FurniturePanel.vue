@@ -18,6 +18,7 @@ const categories: Array<{ id: FurnitureCategory; label: string }> = [
   { id: 'bathroom', label: '卫浴' },
   { id: 'office', label: '办公' },
   { id: 'lighting', label: '灯光' },
+  { id: 'person', label: '人物' },
 ];
 
 const expanded = ref<FurnitureCategory | null>('livingroom');

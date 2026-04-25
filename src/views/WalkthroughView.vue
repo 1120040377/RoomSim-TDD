@@ -101,6 +101,7 @@ function initScene() {
   const h = container.clientHeight;
 
   camera = new PerspectiveCamera(70, w / h, 0.02, 200);
+  scene.add(camera); // 相机加入场景，camera.add() 的子节点才会被渲染
   const spawn = getSpawnPoint(plan);
   camera.position.set(
     spawn.x * CM_TO_M,
@@ -138,6 +139,7 @@ function initScene() {
   raycaster = new InteractionRaycaster(camera, scene);
 
   fpArms = buildFirstPersonArms();
+  fpArms.visible = false;
   camera.add(fpArms);
 }
 
