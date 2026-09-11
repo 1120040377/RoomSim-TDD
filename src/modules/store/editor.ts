@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import type { SelectionTarget, Vec2 } from '@/modules/model/types';
+import type { SelectionTarget, Vec2, UtilityKind } from '@/modules/model/types';
 
 export type ToolName =
   | 'select'
@@ -9,6 +9,7 @@ export type ToolName =
   | 'door'
   | 'window'
   | 'furniture'
+  | 'utility'
   | 'measure';
 
 export interface Viewport {
@@ -24,6 +25,11 @@ export const useEditorStore = defineStore('editor', () => {
   const showErgonomics = ref(true);
   const showDimensions = ref(true);
   const showGrid = ref(true);
+  const showUtilities = ref(false);
+  const showFurniture = ref(false);
+  const utilityKind = ref<UtilityKind>('socket');
+  const utilityMode = ref<'point' | 'route'>('point');
+  const workspace = ref<'furniture' | 'utilities' | 'finish'>('furniture');
 
   /** 当前要放置的家具类型（拖拽/点击生成时由 FurniturePanel 设置） */
   const pendingFurnitureType = ref<string | null>(null);
@@ -56,10 +62,16 @@ export const useEditorStore = defineStore('editor', () => {
     showErgonomics.value = true;
     showDimensions.value = true;
     showGrid.value = true;
+    showUtilities.value = false;
+    showFurniture.value = false;
+    workspace.value = 'furniture';
+    utilityKind.value = 'socket';
+    utilityMode.value = 'point';
     pendingFurnitureType.value = null;
   }
 
   return {
+    workspace, showUtilities, showFurniture, utilityKind, utilityMode,
     activeTool,
     selection,
     viewport,

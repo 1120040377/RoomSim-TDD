@@ -27,6 +27,7 @@ export function buildOpenings(plan: Plan): BuiltOpenings {
     const wall = plan.walls[op.wallId];
     if (!wall) continue;
     if (op.kind === 'door') {
+      if(op.passage)continue;
       const { group: g, pivot } = buildDoor(op, wall, plan);
       group.add(g);
       doorPivots[op.id] = pivot;

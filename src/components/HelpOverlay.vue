@@ -17,12 +17,17 @@ const editorKeys: KeyRow[] = [
   { keys: ['Ctrl', 'Z'], desc: '撤销' },
   { keys: ['Ctrl', 'Shift', 'Z'], desc: '重做' },
   { keys: ['Ctrl', 'D'], desc: '复制选中家具' },
-  { keys: ['Del'], desc: '删除选中家具' },
+  { keys: ['Del'], desc: '删除选中对象 / 水电点位' },
+  { keys: ['Enter'], desc: '完成水电管线' },
+  { keys: ['Shift'], desc: '画墙正交 / 管线转弯' },
   { keys: ['滚轮'], desc: '缩放' },
-  { keys: ['中键拖'], desc: '平移画布' },
+  { keys: ['空格拖 / 中键拖'], desc: '平移画布' },
 ];
 
 const walkthroughKeys: KeyRow[] = [
+  { keys: ['拖动 / 滚轮'], desc: '第三人称旋转 / 跟随距离' },
+  { keys: ['左键拖'], desc: '俯瞰模式旋转' },
+  { keys: ['右键拖 / 滚轮'], desc: '俯瞰平移 / 缩放' },
   { keys: ['W/A/S/D'], desc: '前后左右移动' },
   { keys: ['Shift'], desc: '按住跑步' },
   { keys: ['鼠标'], desc: '转动视角（锁定指针后）' },

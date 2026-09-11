@@ -30,6 +30,7 @@ const OpeningBaseFields = {
 export const DoorSchema = z.object({
   ...OpeningBaseFields,
   kind: z.literal('door'),
+  passage: z.boolean().optional(),
   hinge: z.enum(['start', 'end']),
   swing: z.enum(['inside', 'outside']),
   state: z.number().min(0).max(1).optional(),
@@ -55,6 +56,8 @@ export const FurnitureSchema = z.object({
   color: z.string().optional(),
   runtimeState: z.record(z.string(), z.union([z.number(), z.boolean()])).optional(),
   wallAligned: z.boolean().optional(),
+  elevation: z.number().finite().min(0).max(500).optional(),
+  mount: z.enum(['floor', 'wall', 'ceiling']).optional(),
 });
 
 export const RoomSchema = z.object({
@@ -91,6 +94,22 @@ export const PlanSchema = z.object({
   furniture: z.record(z.string(), FurnitureSchema),
   rooms: z.record(z.string(), RoomSchema),
   walkthrough: WalkthroughSchema,
+  renovation: z.object({
+    utilities: z.record(z.string(), z.object({
+      id: z.string(),
+      kind: z.enum(['socket', 'switch', 'electric', 'cold-water', 'hot-water', 'drain']),
+      label: z.string(),
+      points: z.array(z.object({ x: z.number().finite(), y: z.number().finite(), height: z.number().finite().min(0).max(500).optional() })).min(1),
+      height: z.number().finite().min(0).max(500),
+      rotation: z.number().finite(),
+      circuit: z.string(),
+    })),
+    finish: z.object({
+      floor: z.enum(['wood', 'tile', 'concrete']),
+      floorColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+      wallColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    }),
+  }).optional(),
 });
 
 export type PlanParsed = z.infer<typeof PlanSchema>;

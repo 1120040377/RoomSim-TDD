@@ -1,4 +1,5 @@
-import { Group } from 'three';
+import { Group, Box3 } from 'three';
+import { buildStorage, STORAGE_TYPES } from './furniture/storage';
 import type { Furniture, FurnitureType, Plan } from '@/modules/model/types';
 import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
 import { CM_TO_M } from '../coord';
@@ -13,6 +14,8 @@ import { buildLampCeiling, buildLampFloor, buildLampWall, buildSwitch } from './
 import { buildPersonStanding, buildPersonSitting } from './furniture/person';
 
 const BUILDERS: Record<FurnitureType, FurnitureBuilderFn> = {
+  'wall-cabinet': buildStorage,
+  'washing-machine': buildStorage,
   'bed-single':       buildBedSingle,
   'bed-double':       buildBedDouble,
   'bed-kingsize':     buildBedKingsize,
@@ -67,10 +70,17 @@ function buildOne(f: Furniture, ceilingHeightCm: number): Group {
   g.name = `furniture-${f.id}`;
   (g.userData as Record<string, unknown>).furnitureId = f.id;
 
-  BUILDERS[f.type](g, f, ceilingHeightCm);
+  if(STORAGE_TYPES.has(f.type)) buildStorage(g,f);
+  else BUILDERS[f.type](g, f, ceilingHeightCm);
 
   g.position.set(f.position.x * CM_TO_M, 0, f.position.y * CM_TO_M);
+  if(f.elevation!==undefined) {
+    const bounds=new Box3().setFromObject(g);
+    g.position.y=f.elevation*CM_TO_M-bounds.min.y;
+  }
   g.rotation.y = -f.rotation;
+  g.updateMatrixWorld(true);
+  g.userData.baseElevation=new Box3().setFromObject(g).min.y/CM_TO_M;
 
   if (def?.interactive) {
     attachInteractable(g, f.id, def.interactive);

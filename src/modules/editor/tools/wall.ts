@@ -28,6 +28,13 @@ export class WallTool implements Tool {
   /** 当前绘制链第一个节点的 ID，用于闭合检测 */
   private chainStartNodeId: NodeId | null = null;
 
+  private endpoint(ctx: ToolContext): Vec2 {
+    const point = ctx.snap?.point ?? ctx.worldPoint;
+    if (!this.startPoint || !ctx.modifiers.shift) return point;
+    return Math.abs(point.x - this.startPoint.x) >= Math.abs(point.y - this.startPoint.y)
+      ? { x: point.x, y: this.startPoint.y } : { x: this.startPoint.x, y: point.y };
+  }
+
   private reset(ctx?: ToolContext) {
     this.startPoint = null;
     this.startNodeId = null;
@@ -42,9 +49,12 @@ export class WallTool implements Tool {
       return;
     }
 
-    const point = ctx.snap?.point ?? ctx.worldPoint;
-    const snapType = ctx.snap?.type;
-    const snapSourceId = ctx.snap?.sourceId;
+    if (e.button !== 0) return;
+    const point = this.endpoint(ctx);
+    const snapMatches = ctx.snap && distance(point, ctx.snap.point) < 0.01;
+    const snapType = snapMatches ? ctx.snap?.type : undefined;
+    const snapSourceId = snapMatches ? ctx.snap?.sourceId : undefined;
+    if (this.startPoint && distance(this.startPoint, point) < 1) return;
 
     if (!this.startPoint) {
       // ── 第一次落点：设置链头 ──
@@ -160,7 +170,7 @@ export class WallTool implements Tool {
       // 虚线预览
       group.add(
         new Konva.Line({
-          points: [this.startPoint.x, this.startPoint.y, ctx.worldPoint.x, ctx.worldPoint.y],
+          points: [this.startPoint.x, this.startPoint.y, this.endpoint(ctx).x, this.endpoint(ctx).y],
           stroke: '#3b82f6',
           strokeWidth: 2,
           dash: [8, 6],
@@ -186,7 +196,7 @@ export class WallTool implements Tool {
 
     // 实时长度气泡（显示在虚线中点上方）
     if (this.startPoint) {
-      const endPt = ctx.snap?.point ?? ctx.worldPoint;
+      const endPt = this.endpoint(ctx);
       const dist = distance(this.startPoint, endPt); // cm
       if (dist > 1) {
         const label =

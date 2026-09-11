@@ -3,9 +3,11 @@ import { WallTool } from './wall';
 import { RectRoomTool } from './rect-room';
 import { DoorTool, WindowTool } from './opening';
 import { FurnitureTool } from './furniture';
+import { UtilityTool } from './utility';
 import type { Tool, ToolName } from './base';
 
 export const TOOLS: Record<ToolName, Tool> = {
+  utility: new UtilityTool(),
   select: new SelectTool(),
   wall: new WallTool(),
   'rect-room': new RectRoomTool(),

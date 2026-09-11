@@ -2,7 +2,8 @@ import type Konva from 'konva';
 import type { Vec2 } from '@/modules/model/types';
 import type { SnapResult } from '@/modules/geometry/snap';
 
-export type ToolName = 'select' | 'wall' | 'rect-room' | 'door' | 'window' | 'furniture' | 'measure';
+export type { ToolName } from '@/modules/store/editor';
+import type { ToolName } from '@/modules/store/editor';
 
 export interface ToolContext {
   stage: Konva.Stage;

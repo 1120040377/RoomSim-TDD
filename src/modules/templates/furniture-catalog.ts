@@ -24,6 +24,8 @@ export interface FurnitureDef {
 }
 
 export const FURNITURE_CATALOG: Record<FurnitureType, FurnitureDef> = {
+  'wall-cabinet': { name: '壁挂吊柜', size: { width: 80, depth: 32, height: 65 }, mountPoint: 'wall', wallAligned: true, category: 'kitchen' },
+  'washing-machine': { name: '洗衣机', size: { width: 60, depth: 60, height: 85 }, category: 'bathroom' },
   // 卧室
   'bed-single': { name: '单人床', size: { width: 100, depth: 200, height: 45 }, defaultColor: '#d4b895', category: 'bedroom' },
   'bed-double': { name: '双人床', size: { width: 150, depth: 200, height: 45 }, defaultColor: '#d4b895', category: 'bedroom' },

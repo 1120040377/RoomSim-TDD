@@ -48,6 +48,8 @@ export interface OpeningBase {
 
 export interface Door extends OpeningBase {
   kind: 'door';
+  /** An open passage has no hinged leaf (e.g. a connected living/dining room). */
+  passage?: boolean;
   /** 铰链在墙段哪一侧：start 代表靠近 wall.startNode */
   hinge: 'start' | 'end';
   /** 向哪一侧开：inside / outside 相对于墙的法向 */
@@ -65,6 +67,8 @@ export type Opening = Door | Window;
 /* ---------------------------- Furniture ----------------------------- */
 
 export type FurnitureType =
+  | 'wall-cabinet'
+  | 'washing-machine'
   | 'bed-single'
   | 'bed-double'
   | 'bed-kingsize'
@@ -118,6 +122,9 @@ export interface Furniture {
   runtimeState?: Record<string, number | boolean>;
   /** 是否贴墙（吸附 + 冲突规则用） */
   wallAligned?: boolean;
+  /** 家具底面离地高度（cm），未指定时保留旧安装方式。 */
+  elevation?: Cm;
+  mount?: 'floor' | 'wall' | 'ceiling';
 }
 
 /* ------------------------------- Room ------------------------------- */
@@ -162,6 +169,29 @@ export interface Plan {
   rooms: Record<RoomId, Room>;
 
   walkthrough: WalkthroughConfig;
+  renovation?: Renovation;
+}
+
+export type UtilityKind = 'socket' | 'switch' | 'cold-water' | 'hot-water' | 'drain' | 'electric';
+export interface Utility {
+  id: string;
+  kind: UtilityKind;
+  label: string;
+  /** 一个坐标为点位，多个坐标为管线；均为 cm。 */
+  points: UtilityPoint[];
+  height: Cm;
+  rotation: number;
+  circuit: string;
+}
+export interface Finish {
+  floor: 'wood' | 'tile' | 'concrete';
+  floorColor: string;
+  wallColor: string;
+}
+export interface UtilityPoint extends Vec2 { height?: Cm }
+export interface Renovation {
+  utilities: Record<string, Utility>;
+  finish: Finish;
 }
 
 /* ------------------------------ Helpers ----------------------------- */
@@ -170,6 +200,7 @@ export const CM_TO_M = 0.01;
 
 /** 选中目标（editor store 使用） */
 export type SelectionTarget =
+  | { kind: 'utility'; id: string }
   | { kind: 'wall'; id: WallId }
   | { kind: 'opening'; id: OpeningId }
   | { kind: 'furniture'; id: FurnitureId }

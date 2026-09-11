@@ -22,7 +22,7 @@ const tools: Array<{ name: ToolName; label: string; key: string }> = [
 </script>
 
 <template>
-  <header class="flex items-center justify-between px-4 py-2 border-b bg-white gap-2">
+  <header class="flex flex-wrap items-center justify-between px-4 py-2 border-b bg-white gap-2">
     <div class="flex items-center gap-2">
       <button class="px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded" @click="$emit('back')">← 返回</button>
       <div class="flex gap-1 ml-2">

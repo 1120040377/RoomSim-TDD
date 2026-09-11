@@ -12,6 +12,7 @@ import type {
   FurnitureId,
   NodeId,
   RoomId,
+  Renovation,
 } from '@/modules/model/types';
 import { detectRooms } from '@/modules/geometry/room-detect';
 import { polygonArea } from '@/modules/geometry/vec2';
@@ -170,6 +171,7 @@ export const usePlanStore = defineStore('plan', () => {
   }
 
   return {
+    _setRenovation: (renovation: Renovation | undefined) => mutate(p => ({ ...p, renovation })),
     plan,
     walls,
     openings,

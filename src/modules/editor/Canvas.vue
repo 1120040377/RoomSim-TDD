@@ -11,6 +11,8 @@ import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
 import { MoveFurnitureCommand, MoveOpeningCommand } from '@/modules/commands';
 import { createDefaultEngine, type Warning } from '@/modules/ergonomics';
 import { debounce } from 'lodash-es';
+import { putUtility } from '@/modules/commands/renovation';
+import { UTILITY_CATALOG } from '@/modules/renovation/model';
 
 const containerRef = ref<HTMLDivElement>();
 const planStore = usePlanStore();
@@ -28,11 +30,20 @@ let layers: {
   dimensions: Konva.Layer;
   openings: Konva.Layer;
   furniture: Konva.Layer;
+  utilities: Konva.Layer;
   warnings: Konva.Layer;
   preview: Konva.Layer;
 } | null = null;
 
 let resizeObserver: ResizeObserver | null = null;
+const cleanupEvents: Array<() => void> = [];
+let spaceHeld = false;
+let panning = false;
+let lastPointerEvent: PointerEvent | null = null;
+const toolHint = () => editorStore.activeTool === 'utility'
+  ? (editorStore.utilityMode === 'route' ? '点击添加折点 · Enter 完成 · Shift 切换转弯 · Esc 取消' : '点击放置点位 · V 选择并拖动')
+  : editorStore.activeTool === 'wall' ? '连续点击画墙 · Shift 水平/垂直 · Esc 结束'
+  : editorStore.activeTool === 'rect-room' ? '拖动绘制矩形房间 · Esc 取消' : '滚轮缩放 · 空格 / 中键拖动画布';
 
 /** 门窗沿墙拖拽状态 */
 let draggingOpening: {
@@ -203,7 +214,7 @@ function drawWalls() {
       hitStrokeWidth: Math.max(10, visualWidth),
     });
     line.on('click tap', (evt) => {
-      if (editorStore.activeTool !== 'select') return;
+      if (editorStore.activeTool !== 'select' || spaceHeld) return;
       editorStore.select({ kind: 'wall', id: wall.id }, evt.evt.shiftKey);
     });
     layers.walls.add(line);
@@ -431,7 +442,7 @@ function drawOpenings() {
       evt.cancelBubble = true;
     });
     line.on('pointerdown', (evt) => {
-      if (editorStore.activeTool !== 'select' || evt.evt.button !== 0) return;
+      if (editorStore.activeTool !== 'select' || evt.evt.button !== 0 || spaceHeld) return;
       editorStore.select({ kind: 'opening', id: op.id }, false);
       draggingOpening = {
         id: op.id,
@@ -452,6 +463,7 @@ function drawOpenings() {
 function drawFurniture() {
   if (!layers || !stage) return;
   layers.furniture.destroyChildren();
+  if(!editorStore.showFurniture){layers.furniture.batchDraw();return;}
   const plan = planStore.plan;
   if (!plan) return;
 
@@ -467,7 +479,7 @@ function drawFurniture() {
       x: screenP.x,
       y: screenP.y,
       rotation: (f.rotation * 180) / Math.PI,
-      draggable: editorStore.activeTool === 'select',
+      draggable: editorStore.activeTool === 'select' && !spaceHeld,
     });
     const w = f.size.width * editorStore.viewport.scale;
     const d = f.size.depth * editorStore.viewport.scale;
@@ -499,13 +511,14 @@ function drawFurniture() {
     const originalPos = { ...f.position };
     g.on('dragend', () => {
       const screenPos = { x: g.x(), y: g.y() };
-      const world = screenToWorld(screenPos);
+      const raw = screenToWorld(screenPos);
+      const world = editorStore.snapEnabled ? findSnap(raw, plan, editorStore.viewport.scale)?.point ?? raw : raw;
       historyStore.execute(new MoveFurnitureCommand(f.id, originalPos, world));
     });
     // 只在无拖拽发生时 select（click/tap 事件在 drag 过程中不触发，这样
     // 不会在拖拽开始时打断 Konva 的 drag session）
     g.on('click tap', (evt) => {
-      if (editorStore.activeTool !== 'select') return;
+      if (editorStore.activeTool !== 'select' || spaceHeld) return;
       editorStore.select({ kind: 'furniture', id: f.id }, evt.evt.shiftKey);
     });
     layers.furniture.add(g);
@@ -577,6 +590,44 @@ function drawWarnings() {
   layers.warnings.batchDraw();
 }
 
+function drawUtilities() {
+  if (!layers) return;
+  layers.utilities.destroyChildren();
+  if (!editorStore.showUtilities) { layers.utilities.batchDraw(); return; }
+  for (const u of Object.values(planStore.plan?.renovation?.utilities ?? {})) {
+    const def = UTILITY_CATALOG[u.kind];
+    const selected = editorStore.selection.some(s => s.kind === 'utility' && s.id === u.id);
+    const pts = u.points.map(worldToScreen);
+    const group = new Konva.Group({ draggable: editorStore.activeTool === 'select' && !spaceHeld });
+    if (pts.length > 1) {
+      group.add(new Konva.Line({ points: pts.flatMap(p => [p.x, p.y]), stroke: def.color,
+        strokeWidth: selected ? 5 : 3, hitStrokeWidth: 16, lineJoin: 'round', opacity: 0.9 }));
+    }
+    for (const p of pts) {
+      group.add(new Konva.Circle({ x: p.x, y: p.y, radius: pts.length === 1 ? 11 : 4,
+        fill: pts.length === 1 ? 'white' : def.color, stroke: selected ? '#172f40' : def.color, strokeWidth: selected ? 3 : 2 }));
+    }
+    if (pts.length === 1) group.add(new Konva.Text({ x: pts[0].x - 10, y: pts[0].y - 6, width: 20,
+      align: 'center', text: def.symbol, fill: def.color, fontSize: 12, listening: false }));
+    group.on('click tap', evt => {
+      if (editorStore.activeTool !== 'select' || spaceHeld) return;
+      editorStore.workspace = 'utilities';
+      editorStore.select({ kind: 'utility', id: u.id });
+      evt.cancelBubble = true;
+    });
+    group.on('dragend', () => {
+      const scale = editorStore.viewport.scale;
+      let dx = group.x() / scale, dy = group.y() / scale;
+      const raw = { x: u.points[0].x + dx, y: u.points[0].y + dy };
+      const snapped = editorStore.snapEnabled && planStore.plan ? findSnap(raw, planStore.plan, scale)?.point : null;
+      if (snapped) { dx = snapped.x - u.points[0].x; dy = snapped.y - u.points[0].y; }
+      historyStore.execute(putUtility({ ...u, points: u.points.map(p => ({ x: p.x + dx, y: p.y + dy })) }));
+    });
+    layers.utilities.add(group);
+  }
+  layers.utilities.batchDraw();
+}
+
 const recomputeWarnings = debounce(() => {
   if (!planStore.plan) return;
   warnings.value = ergEngine.run(planStore.plan);
@@ -590,6 +641,7 @@ function drawAll() {
   drawDimensions();
   drawOpenings();
   drawFurniture();
+  drawUtilities();
   drawWarnings();
 }
 
@@ -599,6 +651,8 @@ function setupEvents() {
   if (!stage) return;
 
   stage.on('pointerdown', (e) => {
+    lastPointerEvent = e.evt;
+    if (e.evt.button !== 0 || spaceHeld) return;
     const ctx = buildCtx(e.evt);
     if (!ctx) return;
     // 点到了 shape（家具等）时不走工具，交给 shape 自己的事件处理（select/drag）；
@@ -607,6 +661,8 @@ function setupEvents() {
     TOOLS[editorStore.activeTool].onPointerDown?.(e.evt, ctx);
   });
   stage.on('pointermove', (e) => {
+    lastPointerEvent = e.evt;
+    if (panning || spaceHeld) return;
     const ctx = buildCtx(e.evt);
     if (!ctx) return;
     if (draggingOpening) return; // 由 window pointermove 统一处理
@@ -614,6 +670,7 @@ function setupEvents() {
     redrawPreview(ctx);
   });
   stage.on('pointerup', (e) => {
+    if (e.evt.button !== 0 || panning || spaceHeld) return;
     const ctx = buildCtx(e.evt);
     if (!ctx) return;
     TOOLS[editorStore.activeTool].onPointerUp?.(e.evt, ctx);
@@ -637,11 +694,10 @@ function setupEvents() {
   });
 
   // 中键/空格拖动平移
-  let panning = false;
   let panStart = { x: 0, y: 0 };
   let offsetStart = { x: 0, y: 0 };
   stage.on('pointerdown', (e) => {
-    if (e.evt.button === 1 || e.evt.button === 2) {
+    if (e.evt.button === 1 || e.evt.button === 2 || spaceHeld) {
       panning = true;
       panStart = { x: e.evt.clientX, y: e.evt.clientY };
       offsetStart = { ...editorStore.viewport.offset };
@@ -683,7 +739,38 @@ function setupEvents() {
   };
   window.addEventListener('pointermove', onMove);
   window.addEventListener('pointerup', onUp);
-  containerRef.value?.addEventListener('contextmenu', (e) => e.preventDefault());
+  const onContext = (e: Event) => e.preventDefault();
+  containerRef.value?.addEventListener('contextmenu', onContext);
+  const onKeyDown = (e: KeyboardEvent) => {
+    if ((e.target as HTMLElement)?.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (e.code === 'Space' && !spaceHeld) {
+      e.preventDefault(); spaceHeld = true; drawFurniture(); drawUtilities();
+      if (containerRef.value) containerRef.value.style.cursor = 'grab';
+    }
+    const ctx = buildCtx(lastPointerEvent ?? new PointerEvent('pointermove'));
+    if (ctx) {
+      if ((e.ctrlKey || e.metaKey) && ['z', 'y'].includes(e.key.toLowerCase())) {
+        TOOLS[editorStore.activeTool].onDeactivate?.(ctx);
+        layers?.preview.destroyChildren(); layers?.preview.batchDraw();
+      } else TOOLS[editorStore.activeTool].onKeyDown?.(e, ctx);
+    }
+  };
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (e.code === 'Space') { spaceHeld = false; drawFurniture(); drawUtilities();
+      if (containerRef.value) containerRef.value.style.cursor = TOOLS[editorStore.activeTool].cursor;
+    }
+  };
+  const onBlur = () => { onUp(); spaceHeld = false; drawFurniture(); drawUtilities(); };
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', onBlur);
+  window.addEventListener('pointercancel', onBlur);
+  cleanupEvents.push(() => {
+    window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('keydown', onKeyDown); window.removeEventListener('keyup', onKeyUp);
+    window.removeEventListener('blur', onBlur); window.removeEventListener('pointercancel', onBlur);
+    containerRef.value?.removeEventListener('contextmenu', onContext);
+  });
 }
 
 function setupWatchers() {
@@ -705,7 +792,14 @@ function setupWatchers() {
   );
   watch(
     () => editorStore.activeTool,
-    () => drawFurniture(),
+    (next, prev) => {
+      const ctx = buildCtx(lastPointerEvent ?? new PointerEvent('pointermove'));
+      if (ctx) { TOOLS[prev].onDeactivate?.(ctx); TOOLS[next].onActivate?.(ctx); }
+      layers?.preview.destroyChildren(); layers?.preview.batchDraw();
+      if (containerRef.value) containerRef.value.style.cursor = TOOLS[next].cursor;
+      drawFurniture(); drawUtilities();
+    },
+    { flush: 'sync' },
   );
   watch(
     () => editorStore.selection,
@@ -713,6 +807,7 @@ function setupWatchers() {
       drawWalls();
       drawOpenings();
       drawFurniture();
+      drawUtilities();
     },
     { deep: true },
   );
@@ -724,6 +819,9 @@ function setupWatchers() {
     () => editorStore.showDimensions,
     () => drawDimensions(),
   );
+  watch(() => editorStore.showGrid, drawBackground);
+  watch(() => editorStore.showUtilities, drawUtilities);
+  watch(() => editorStore.showFurniture, drawFurniture);
 }
 
 onMounted(() => {
@@ -739,6 +837,7 @@ onMounted(() => {
     dimensions: new Konva.Layer(),
     openings: new Konva.Layer(),
     furniture: new Konva.Layer(),
+    utilities: new Konva.Layer(),
     warnings: new Konva.Layer(),
     preview: new Konva.Layer(),
   };
@@ -757,11 +856,24 @@ onMounted(() => {
   });
   resizeObserver.observe(containerRef.value!);
 
+  fitView();
+});
+
+function fitView() {
+  if (!stage) return;
   // 居中初始视图
   const p = planStore.plan;
-  if (p && Object.keys(p.nodes).length > 0) {
-    const xs = Object.values(p.nodes).map((n) => n.position.x);
-    const ys = Object.values(p.nodes).map((n) => n.position.y);
+  const points = p ? [
+    ...Object.values(p.nodes).map(n => n.position),
+    ...Object.values(p.furniture).flatMap(f => {
+      const r = Math.hypot(f.size.width, f.size.depth) / 2;
+      return [{ x: f.position.x - r, y: f.position.y - r }, { x: f.position.x + r, y: f.position.y + r }];
+    }),
+    ...Object.values(p.renovation?.utilities ?? {}).flatMap(u => u.points),
+  ] : [];
+  if (points.length) {
+    const xs = points.map(p => p.x);
+    const ys = points.map(p => p.y);
     const bbox = {
       minX: Math.min(...xs),
       maxX: Math.max(...xs),
@@ -771,10 +883,10 @@ onMounted(() => {
     const bw = bbox.maxX - bbox.minX || 400;
     const bh = bbox.maxY - bbox.minY || 300;
     const pad = 80;
-    const scale = Math.min(
+    const scale = Math.max(0.05, Math.min(3,
       (stage.width() - pad * 2) / bw,
       (stage.height() - pad * 2) / bh,
-    );
+    ));
     const cx = (bbox.minX + bbox.maxX) / 2;
     const cy = (bbox.minY + bbox.maxY) / 2;
     editorStore.setViewport({
@@ -784,9 +896,21 @@ onMounted(() => {
   } else {
     editorStore.setViewport({ scale: 1, offset: { x: stage.width() / 2, y: stage.height() / 2 } });
   }
-});
+}
+
+function zoom(factor: number) {
+  if (!stage) return;
+  const center = { x: stage.width() / 2, y: stage.height() / 2 };
+  const world = screenToWorld(center);
+  const scale = Math.max(0.05, Math.min(10, editorStore.viewport.scale * factor));
+  editorStore.setViewport({ scale, offset: { x: center.x - world.x * scale, y: center.y - world.y * scale } });
+}
 
 onBeforeUnmount(() => {
+  const ctx = buildCtx(lastPointerEvent ?? new PointerEvent('pointermove'));
+  if (ctx) TOOLS[editorStore.activeTool].onDeactivate?.(ctx);
+  cleanupEvents.forEach(fn => fn());
+  recomputeWarnings.cancel();
   resizeObserver?.disconnect();
   stage?.destroy();
   stage = null;
@@ -796,9 +920,21 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="containerRef" class="editor-canvas" />
+  <div class="canvas-controls">
+    <button aria-label="缩小" @click="zoom(1 / 1.2)">−</button>
+    <span>{{ Math.round(editorStore.viewport.scale * 100) }}%</span>
+    <button aria-label="放大" @click="zoom(1.2)">+</button>
+    <button @click="fitView">适应画布</button>
+    <button :aria-pressed="editorStore.showGrid" @click="editorStore.showGrid = !editorStore.showGrid">网格</button>
+    <button :aria-pressed="editorStore.snapEnabled" @click="editorStore.snapEnabled = !editorStore.snapEnabled">吸附</button>
+  </div>
+  <div class="canvas-hint">{{ toolHint() }}</div>
 </template>
 
 <style scoped>
+.canvas-controls { position: absolute; right: 16px; bottom: 16px; display: flex; align-items: center; background: #fff; border: 1px solid #dce3e9; border-radius: 6px; box-shadow: 0 3px 12px #263e5010; font-size: 12px; overflow: hidden; }
+.canvas-controls button { padding: 10px; }.canvas-controls button:hover, .canvas-controls button[aria-pressed="true"] { background: #eaf3f3; color: #166b73; }.canvas-controls span { min-width: 40px; text-align: center; }
+.canvas-hint { position: absolute; left: 16px; top: 14px; color: #697c88; font-size: 12px; background: #ffffffeb; padding: 8px 12px; border-radius: 4px; pointer-events: none; }
 .editor-canvas {
   position: absolute;
   inset: 0;

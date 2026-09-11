@@ -51,6 +51,7 @@ export function buildCollider(plan: Plan): OrientedBox[] {
 
   // 家具
   for (const f of Object.values(plan.furniture)) {
+    if (['lamp-ceiling', 'lamp-wall', 'switch'].includes(f.type) || (f.elevation ?? 0) >= 140) continue;
     boxes.push({
       center: { ...f.position },
       halfW: f.size.width / 2,

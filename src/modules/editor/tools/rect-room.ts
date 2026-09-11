@@ -85,6 +85,10 @@ export class RectRoomTool implements Tool {
     this.startPoint = null;
   }
 
+  onKeyDown(e: KeyboardEvent, ctx: ToolContext) {
+    if (e.key === 'Escape') { this.startPoint = null; ctx.requestPreviewRedraw(); }
+  }
+
   renderPreview(ctx: ToolContext) {
     ctx.previewLayer.findOne(`.${PREVIEW_GROUP}`)?.destroy();
     if (!this.startPoint) return;
@@ -102,5 +106,10 @@ export class RectRoomTool implements Tool {
       listening: false,
     });
     ctx.previewLayer.add(rect);
+    ctx.previewLayer.add(new Konva.Text({
+      x: Math.min(s.x, e.x), y: Math.min(s.y, e.y) - 24 / ctx.viewScale,
+      text: `${(Math.abs(e.x - s.x) / 100).toFixed(2)} × ${(Math.abs(e.y - s.y) / 100).toFixed(2)} m · ${(Math.abs(e.x - s.x) * Math.abs(e.y - s.y) / 10000).toFixed(1)} ㎡`,
+      fontSize: 12 / ctx.viewScale, fill: '#246f76', listening: false,
+    }));
   }
 }

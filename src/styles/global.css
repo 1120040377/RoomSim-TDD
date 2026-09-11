@@ -26,3 +26,12 @@ button {
   font-family: inherit;
   cursor: pointer;
 }
+
+/* Low specificity keeps UnoCSS and component button styles authoritative. */
+:where(button) {
+  border: 0 solid transparent;
+  background: transparent;
+  color: inherit;
+}
+button:focus-visible { outline: 2px solid #25828b; outline-offset: 2px; }
+button:disabled { cursor: default; }

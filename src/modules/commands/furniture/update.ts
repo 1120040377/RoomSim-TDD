@@ -2,7 +2,7 @@ import type { Command } from '../base';
 import type { Furniture, FurnitureId, FurnitureSize } from '@/modules/model/types';
 import { usePlanStore } from '@/modules/store/plan';
 
-type Updatable = Partial<Pick<Furniture, 'color' | 'wallAligned'>> & {
+type Updatable = Partial<Pick<Furniture, 'color' | 'wallAligned' | 'elevation' | 'mount' | 'position' | 'rotation' | 'runtimeState'>> & {
   size?: FurnitureSize;
 };
 

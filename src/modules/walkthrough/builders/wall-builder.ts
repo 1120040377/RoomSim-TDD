@@ -22,7 +22,7 @@ export function buildWalls(plan: Plan): BuildWallsResult {
   group.name = 'walls';
   const meshesByWallId: Record<string, Mesh[]> = {};
 
-  const material = new MeshStandardMaterial({ color: WALL_COLOR, roughness: 0.9 });
+  const material = new MeshStandardMaterial({ color: plan.renovation?.finish.wallColor ?? WALL_COLOR, roughness: 0.9 });
 
   for (const wall of Object.values(plan.walls)) {
     const openings = Object.values(plan.openings).filter((o) => o.wallId === wall.id);
@@ -77,7 +77,7 @@ function buildSingleWall(
       editorY * CM_TO_M,
     );
     mesh.rotation.y = yaw;
-    mesh.castShadow = false;
+    mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.name = `wall-${wall.id}-slab`;
     (mesh as Object3D & { userData: Record<string, unknown> }).userData = { wallId: wall.id };

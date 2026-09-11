@@ -6,7 +6,7 @@ import { CM_TO_M } from '../coord';
 const WALK_SPEED = 1.4; // m/s
 const RUN_SPEED = 3.0; // m/s
 const PLAYER_RADIUS_CM = 20;
-const LOOK_SENSITIVITY = 0.002;
+const LOOK_SENSITIVITY = 0.001;
 
 /**
  * 第一人称桌面控制器。相机固定在某 y 高度，xz 平面上移动。
@@ -17,6 +17,8 @@ export class DesktopFPS {
   private pitch = 0;
   private keys = new Set<string>();
   private attached = false;
+  private resting=false;
+  private returnPosition=new Vector3();
   private cleanup: Array<() => void> = [];
 
   constructor(
@@ -60,6 +62,8 @@ export class DesktopFPS {
   }
 
   dispose() {
+    this.stand();
+    this.keys.clear();
     this.cleanup.forEach((fn) => fn());
     this.cleanup = [];
     this.attached = false;
@@ -68,6 +72,7 @@ export class DesktopFPS {
 
   setYaw(yaw: number) {
     this.yaw = yaw;
+    this.pitch=0;
     this.syncCameraRotation();
   }
 
@@ -76,6 +81,7 @@ export class DesktopFPS {
   }
 
   update(dt: number) {
+    if (document.pointerLockElement !== this.domElement) { this.keys.clear(); return; }
     const speed = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? RUN_SPEED : WALK_SPEED;
 
     const dir = new Vector3();
@@ -84,6 +90,7 @@ export class DesktopFPS {
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) dir.x -= 1;
     if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) dir.x += 1;
     if (dir.lengthSq() === 0) return;
+    this.stand();
     dir.normalize();
 
     // 把输入方向按 yaw 投影到世界 XZ 平面
@@ -108,4 +115,11 @@ export class DesktopFPS {
     const q = new Quaternion().setFromEuler(new Euler(this.pitch, this.yaw, 0, 'YXZ'));
     this.camera.quaternion.copy(q);
   }
+
+  setHeight(height: number) { this.personHeightCm = height; }
+  useFurniture(x:number,z:number,eyeHeight:number){
+    if(!this.resting)this.returnPosition.copy(this.camera.position);
+    this.resting=true;this.keys.clear();this.camera.position.set(x,eyeHeight,z);
+  }
+  stand(){if(!this.resting)return;this.camera.position.copy(this.returnPosition);this.resting=false;}
 }

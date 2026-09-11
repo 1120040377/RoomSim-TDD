@@ -27,6 +27,8 @@ export class AddFurnitureCommand implements Command {
       size: { ...def.size },
       color: opts.color ?? def.defaultColor,
       wallAligned: def.wallAligned,
+      mount: def.mountPoint,
+      ...(opts.type==='wall-cabinet'?{elevation:150}:{}),
     };
   }
 
