@@ -64,7 +64,7 @@ export class SceneEditor {
     this.selection=selection;this.transform.detach();if(!selection||!this.active||this.tool!=='select')return;
     const groups=this.groups();const group=selection.kind==='furniture'?groups.furniture:selection.kind==='utility'?groups.utilities:null;
     const object=group?.children.find(o=>o.userData.furnitureId===selection.id||o.userData.utilityId===selection.id);
-    if(object){this.transform.setTranslationSnap(this.step/100);this.transform.attach(object);}
+    if(object&&object.visible&&group?.visible){this.transform.setTranslationSnap(this.step/100);this.transform.attach(object);}
   }
   refresh(){this.select(this.selection);}
   setStep(step:number){this.step=step;this.transform.setTranslationSnap(step/100);}
@@ -84,7 +84,9 @@ export class SceneEditor {
   }
   private click(e:PointerEvent) {
     if(this.tool==='select') {
-      this.setRay(e);const hit=this.ray.intersectObjects([this.groups().furniture,this.groups().utilities],true)[0];
+      this.setRay(e);const hit=this.ray.intersectObjects([this.groups().furniture,this.groups().utilities],true).find(hit=>{
+        let object:Object3D|null=hit.object;while(object){if(!object.visible)return false;object=object.parent;}return true;
+      });
       let object:Object3D|null=hit?.object??null;
       while(object&&!object.userData.furnitureId&&!object.userData.utilityId)object=object.parent;
       const selection:SelectionTarget|null=object?.userData.furnitureId?{kind:'furniture',id:object.userData.furnitureId}:object?.userData.utilityId?{kind:'utility',id:object.userData.utilityId}:null;

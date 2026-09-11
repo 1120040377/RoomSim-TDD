@@ -1,12 +1,34 @@
 # RoomSim
 
-**A browser-based "pre-renovation spatial comfort simulator."**  
-Draw a floor plan in 2D top-down view, place furniture → switch to 3D first-person walkthrough to judge whether the space actually feels comfortable to live in.
+**Design a space. Step into a home.**
+
+Draw a floor plan in 2D, arrange furniture and utilities in 3D, then explore in first or third person to see how the home feels to live in.
+
+![RoomSim concept illustration: an architectural floor plan becomes a warm cutaway home with furniture, utilities and family life](./docs/images/roomsim-concept.png)
+
+*AI-generated concept artwork, not an application screenshot. Actual application views are shown below.*
 
 **Live Demo:** [https://1120040377.github.io/RoomSim-TDD/](https://1120040377.github.io/RoomSim-TDD/)  
 **中文文档:** [README.zh.md](./README.zh.md)
 
 For technical design details, see [RoomSim-TDD.md](./RoomSim-TDD.md).
+
+### From Floor Plan to Everyday Life
+
+![Draw walls, doors and windows; arrange furniture and utilities; walk, aim and interact](./docs/images/workflow.svg)
+
+| 01 · Plan the layout | 02 · Inspect the space |
+| :--- | :--- |
+| [![Three-bedroom floor plan with furniture references and dimensions](./docs/images/floor-plan.png)](./docs/images/floor-plan.png) | [![The same three-bedroom template in a furnished 3D cutaway view](./docs/images/apartment-3d.png)](./docs/images/apartment-3d.png) |
+| Edit structure and optionally show furniture references. | Check how living areas, bedrooms and balconies connect. |
+
+*Actual application screenshots with Chinese UI. Click either image to view it at full size.*
+
+### See the Hidden Details
+
+![Water-only view with blue cold-water, red hot-water and green drainage routes, source labels and layer controls](./docs/images/water-network.png)
+
+Separate cold water, hot water and drainage, identify source markers, and focus the camera on the network. Existing plans can rebuild generated water connections while preserving hand-drawn routes, with undo support. These are planning diagrams, not construction drawings; pressure, drainage slopes and code compliance are not calculated.
 
 ---
 

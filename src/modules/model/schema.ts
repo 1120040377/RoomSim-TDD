@@ -103,6 +103,8 @@ export const PlanSchema = z.object({
       height: z.number().finite().min(0).max(500),
       rotation: z.number().finite(),
       circuit: z.string(),
+      role: z.enum(['source','terminal','pipe']).optional(),
+      generatedBy: z.literal('water-network-v1').optional(),
     })),
     finish: z.object({
       floor: z.enum(['wood', 'tile', 'concrete']),

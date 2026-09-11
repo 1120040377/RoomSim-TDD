@@ -52,7 +52,7 @@ test('六种预置入口、3D 精确装修、布线、撤销与刷新保存', as
   await page.getByLabel('网格精度').selectOption('1');
   await page.getByRole('button', { name: '水电', exact: true }).click();
   const utilityCount = Object.keys((await readPlan(page)).renovation!.utilities).length;
-  await page.getByRole('button', { name: '冷水', exact: true }).click();
+  await page.locator('.scene-editor-panel').getByRole('button', { name: '冷水', exact: true }).click();
   // Empty lower-left canvas region intersects the ground plane, producing a valid 3D route.
   await page.mouse.click(250, 480);
   await page.mouse.click(390, 520);
@@ -163,6 +163,27 @@ test('住宅三室两厅布局预览及第三人称鼠标锁定、暂停、继�
   await page.keyboard.press('e');await resumePlay(page);await expect(page.locator('.aim-crosshair')).toBeVisible();
   await pausePlay(page);await page.getByRole('button',{name:'俯瞰',exact:true}).click();
   await page.screenshot({path:'test-results/residential-three-bedroom-3d.png'});
+});
+
+test('水路单独透视、源头标识、重建与撤销',async({page})=>{
+  await createPlan(page);
+  await page.getByRole('button',{name:/进入漫游/}).click();await pausePlay(page);
+  await page.getByRole('button',{name:'俯瞰',exact:true}).click();
+  await page.getByRole('button',{name:'水电透视',exact:true}).click();
+  const inspector=page.locator('.utility-inspector');
+  await inspector.getByRole('button',{name:'只看水路',exact:true}).click();
+  await expect(page.locator('.utility-source-label')).toHaveCount(3);
+  await inspector.getByRole('button',{name:'聚焦水路',exact:true}).click();
+  await page.screenshot({path:'test-results/water-network.png'});
+  await inspector.getByRole('button',{name:'冷水',exact:true}).click();
+  await expect(page.locator('.utility-source-label')).toHaveCount(1);
+  await expect(page.locator('.utility-source-label')).toContainText('入户冷水');
+  await page.getByRole('button',{name:'装修模式',exact:true}).click();
+  const before=(await readPlan(page)).renovation;
+  await inspector.getByRole('button',{name:'补齐 / 重建水路示意',exact:true}).click();
+  await expect(inspector.getByRole('status')).toContainText('可撤销');
+  await page.getByRole('button',{name:'撤销',exact:true}).click();
+  expect((await readPlan(page)).renovation).toEqual(before);
 });
 
 test('画墙模式平移不创建墙、切换工具取消旧预览、网格即时更新', async ({ page }) => {

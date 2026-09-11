@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="330" viewBox="0 0 1200 330" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">RoomSim — Plan, furnish, live</title>
+  <desc id="desc">Draw a 2D floor plan, arrange furniture and utilities in 3D, then explore the home and interact with furniture.</desc>
+  <defs>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M16 0H0V16" stroke="#D9E3DD" stroke-width=".6"/></pattern>
+  </defs>
+  <rect width="1200" height="330" rx="20" fill="#F8F6F0"/>
+  <g stroke="#DFE2D8"><path d="M400 38V292M800 38V292"/></g>
+  <g font-family="Segoe UI, Arial, sans-serif">
+    <g fill="#89968E" font-size="12" letter-spacing="2"><text x="36" y="38">01 / STRUCTURE</text><text x="436" y="38">02 / DETAILS</text><text x="836" y="38">03 / EXPERIENCE</text></g>
+    <g transform="translate(108 65)">
+      <rect width="176" height="140" rx="8" fill="url(#grid)"/>
+      <path d="M12 14H162V124H100V100H12Z M100 14V58 M100 83V100 M12 70H66 M90 70H100" stroke="#285B57" stroke-width="5" stroke-linecap="square"/>
+      <path d="M36 14H71M162 38V68M126 124H145" stroke="#71B5C0" stroke-width="5"/>
+      <path d="M66 70V94A24 24 0 0 0 90 70" stroke="#BE9565" stroke-width="1.5"/>
+      <path d="M12 137H162M12 132V142M162 132V142" stroke="#9BA9A0"/>
+    </g>
+    <g transform="translate(480 68)">
+      <path d="M10 100L108 44L232 112L133 170Z" fill="#E9DCC7"/>
+      <path d="M10 100V35L108 -17V44Z" fill="#E0E7DD"/>
+      <path d="M108 -17L232 50V112L108 44Z" fill="#EEEDE4"/>
+      <path d="M10 100L133 170L232 112V120L133 178L10 108Z" fill="#CABA9F"/>
+      <path d="M80 65L111 47L172 80L141 98Z" fill="#739E91"/>
+      <path d="M80 65V88L141 122V98Z" fill="#416F65"/>
+      <path d="M141 98L172 80V104L141 122Z" fill="#567F73"/>
+      <path d="M80 65V49L111 32L172 65V80L111 47Z" fill="#91B3A3"/>
+      <path d="M42 107L77 88L117 110L82 130Z" fill="#C9A982"/>
+      <path d="M42 107V115M82 130V138M117 110V118" stroke="#A8855E" stroke-width="3"/>
+      <path d="M151 26V50L205 79V101" stroke="#318FAB" stroke-width="3" stroke-linejoin="round"/>
+      <path d="M159 30V47L213 76V98" stroke="#CE7867" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="205" cy="101" r="4" fill="#318FAB"/><circle cx="213" cy="98" r="4" fill="#CE7867"/>
+    </g>
+    <g transform="translate(870 68)">
+      <path d="M16 140L113 87L234 146" stroke="#D9DDCF" stroke-width="2"/>
+      <rect x="121" y="7" width="71" height="121" rx="5" fill="#E2E7DE" stroke="#94A89D" stroke-width="2"/>
+      <path d="M126 11L169 25V145L126 125Z" fill="#FCFCF6" stroke="#94A89D" stroke-width="2"/>
+      <path d="M155 51V67" stroke="#50736A" stroke-width="3" stroke-linecap="round"/>
+      <path d="M51 114L48 151M71 114L79 151" stroke="#3B5455" stroke-width="13" stroke-linecap="round"/>
+      <rect x="40" y="61" width="43" height="62" rx="16" fill="#4E887A"/>
+      <path d="M43 75L28 105M79 75L96 88L119 75" stroke="#C4A07D" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="61" cy="41" r="19" fill="#D2B08C"/>
+      <path d="M42 39A19 19 0 0 1 80 39V32C73 12 45 13 42 39Z" fill="#50463C"/>
+      <circle cx="150" cy="71" r="13" stroke="#36786D" stroke-dasharray="3 4"/><circle cx="150" cy="71" r="2.5" fill="#36786D"/>
+      <rect x="197" y="42" width="27" height="27" rx="6" fill="#285B57"/><text x="210.5" y="61" text-anchor="middle" fill="white" font-size="17">E</text>
+    </g>
+    <g fill="#244D47" font-size="25" font-weight="600"><text x="36" y="264">Plan the space.</text><text x="436" y="264">Make it yours.</text><text x="836" y="264">Step inside.</text></g>
+    <g fill="#748078" font-size="14"><text x="36" y="291">Walls · doors · windows</text><text x="436" y="291">Furniture · placement · utilities</text><text x="836" y="291">Walk · aim · interact</text></g>
+  </g>
+</svg>

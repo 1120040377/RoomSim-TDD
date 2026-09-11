@@ -182,6 +182,8 @@ export interface Utility {
   height: Cm;
   rotation: number;
   circuit: string;
+  role?: 'source' | 'terminal' | 'pipe';
+  generatedBy?: 'water-network-v1';
 }
 export interface Finish {
   floor: 'wood' | 'tile' | 'concrete';

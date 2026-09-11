@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   HemisphereLight,
@@ -24,6 +24,10 @@ import {
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildUtilities } from '@/modules/walkthrough/builders/utility-builder';
+import { connectWaterNetwork,isWater } from '@/modules/renovation/water-network';
+import { utilityMatches,type UtilityFilter } from '@/modules/renovation/visibility';
+import { UTILITY_CATALOG } from '@/modules/renovation/model';
+import { RenovationCommand } from '@/modules/commands/renovation';
 import { ThirdPerson } from '@/modules/walkthrough/controls/ThirdPerson';
 import { usePlanStore } from '@/modules/store/plan';
 import { planRepo, setupAutoSave } from '@/modules/storage/plan-repo';
@@ -71,6 +75,9 @@ const personHeight = ref(170);
 const avatarKind=ref<AvatarKind>('adult');
 const viewMode = ref<'orbit' | 'walk' | 'third' | 'edit'>('third');
 const utilityVisible = ref(false);
+const utilityFilter=ref<UtilityFilter>('all'),waterNotice=ref('');
+const filteredUtilities=computed(()=>Object.values(planStore.plan?.renovation?.utilities??{}).filter(u=>utilityMatches(u.kind,utilityFilter.value)));
+const sourceLabels=ref<Array<{id:string;text:string;x:number;y:number;anchorY:number;color:string}>>([]);
 const cutaway = ref(true);
 const night = ref(false);
 let orbit: OrbitControls | null = null;
@@ -311,6 +318,19 @@ function tick(t: number) {
     const id=activeLifeTarget.value?.id;
     targetHighlight.set(furnitureGroup?.children.find(o=>o.userData.furnitureId===id)??(id?doorPivots[id]:null)??null);
   }
+  if(utilityVisible.value&&utilityGroup){
+    const canvas=canvasRef.value!,labels:typeof sourceLabels.value=[];
+    for(const item of utilityGroup.children){if(!item.visible||item.userData.utilityRole!=='source')continue;
+      const u=planStore.plan?.renovation?.utilities[item.userData.utilityId];if(!u)continue;
+      const point=item.getWorldPosition(new Vector3()).project(camera);
+      if(point.z<-1||point.z>1||Math.abs(point.x)>1||Math.abs(point.y)>1)continue;
+      const y=(1-point.y)*canvas.clientHeight/2;
+      labels.push({id:u.id,text:u.label,x:(point.x+1)*canvas.clientWidth/2,y,anchorY:y,color:UTILITY_CATALOG[u.kind].color});
+    }
+    labels.sort((a,b)=>a.y-b.y);
+    for(let i=0;i<labels.length;i++)for(let j=0;j<i;j++)if(Math.abs(labels[i].x-labels[j].x)<185&&Math.abs(labels[i].y-labels[j].y)<34)labels[i].y=labels[j].y+34;
+    sourceLabels.value=labels;
+  }else sourceLabels.value=[];
 
 
   renderer.render(scene, camera);
@@ -444,6 +464,7 @@ function setMode(mode: 'orbit' | 'walk' | 'third' | 'edit') {
 function updateLayers() {
   restoreOcclusion();
   if (utilityGroup) utilityGroup.visible = utilityVisible.value;
+  utilityGroup?.children.forEach(object=>{object.visible=utilityMatches(object.userData.utilityKind,utilityFilter.value);});
   const clip = (viewMode.value==='orbit'||viewMode.value==='third') && cutaway.value;
   for (const group of [wallGroup, openingGroup]) group?.traverse(object => {
     const renderable = object as Mesh;
@@ -462,6 +483,24 @@ function updateLayers() {
       material.needsUpdate = true;
     }
   });
+}
+function filterUtilities(filter:UtilityFilter){utilityFilter.value=filter;utilityVisible.value=true;updateLayers();}
+function focusWater(){
+  if(!camera||!orbit)return;
+  if(viewMode.value!=='orbit'&&viewMode.value!=='edit')setMode('orbit');
+  filterUtilities('water');const bounds=new Box3();
+  for(const u of filteredUtilities.value)for(const p of u.points)bounds.expandByPoint(new Vector3(p.x/100,(p.height??u.height)/100,p.y/100));
+  if(bounds.isEmpty())return;
+  const center=bounds.getCenter(new Vector3()),size=bounds.getSize(new Vector3()),distance=Math.max(3,Math.max(size.x,size.z,size.y)*1.15)*Math.max(1,1/camera.aspect);
+  orbit.target.copy(center);camera.position.copy(center).add(new Vector3(-0.7,1.1,-0.85).multiplyScalar(distance));orbit.update();
+}
+function rebuildWater(){
+  if(!planStore.plan)return;
+  if(!Object.values(planStore.plan.renovation?.utilities??{}).some(u=>isWater(u.kind)&&u.points.length===1&&u.role!=='source')){waterNotice.value='当前没有水路接口，请先添加冷水、热水或排水点位。';return;}
+  const result=connectWaterNetwork(planStore.plan);
+  historyStore.execute(new RenovationCommand('补齐水路连接',r=>({...r,utilities:result.utilities})));
+  waterNotice.value=result.unconnected.length?`${result.unconnected.length} 个接口未连通：请检查墙体是否断开。`:'已生成水路连接示意，可撤销；原有手绘管线保留。';
+  filterUtilities('water');
 }
 function toggleNight() {
   night.value = !night.value;
@@ -578,6 +617,19 @@ watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisi
     </div>
     <SceneEditorPanel v-if="viewMode==='edit'" :selected="editSelection" :step="editStep" :tool="editTool" :notice="editNotice"
       @select="selectEdited" @add="addToScene" @tool="setEditTool" @step="editStep=$event;sceneEditor?.setStep($event)" @finish="sceneEditor?.finishRoute()" />
+    <aside v-if="utilityVisible" class="utility-inspector">
+      <strong>水电透视</strong>
+      <div class="utility-filters"><button v-for="[key,label] in ([['all','全部'],['water','只看水路'],['power','只看电路'],['cold-water','冷水'],['hot-water','热水'],['drain','排水']] as const)" :key="key" :class="{active:utilityFilter===key}" @click="filterUtilities(key)">{{label}}</button></div>
+      <p class="utility-legend"><span style="color:#0284c7">● 冷水</span> <span style="color:#e34545">● 热水</span> <span style="color:#059669">● 排水</span></p>
+      <p>{{filteredUtilities.filter(u=>u.points.length===1).length}} 个点位 / {{filteredUtilities.filter(u=>u.points.length>1).length}} 段管线</p>
+      <button @click="focusWater">聚焦水路</button>
+      <p>箭头表示连接方向；管线加粗仅为辨识，不代表施工管径。</p>
+      <button @click="rebuildWater">补齐 / 重建水路示意</button>
+      <p v-if="waterNotice" role="status">{{waterNotice}}</p>
+      <p>沿墙连接示意，未计算排水坡度、压力或施工避让。</p>
+    </aside>
+    <svg v-if="sourceLabels.length" class="utility-label-leaders"><line v-for="label in sourceLabels" :key="label.id" :x1="label.x" :y1="label.anchorY" :x2="label.x+12" :y2="label.y" :stroke="label.color" stroke-width="1.5" /></svg>
+    <div v-for="label in sourceLabels" :key="label.id" class="utility-source-label" :style="{left:`${label.x}px`,top:`${label.y}px`,borderColor:label.color}">{{label.text}}</div>
     <aside v-if="viewMode==='third'||viewMode==='walk'" class="life-panel">
       <h3>生活模式 <span>准星交互</span></h3>
       <p>{{lifeStatus}}</p>
@@ -610,6 +662,8 @@ watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisi
 </template>
 
 <style scoped>
+.utility-label-leaders{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.utility-inspector{position:absolute;left:16px;top:70px;width:225px;padding:14px;background:#fffffff2;color:#34515b;border:1px solid #d0dfe1;border-radius:8px;font-size:12px;max-height:calc(100% - 190px);overflow:auto}.utility-inspector p{margin:9px 0;line-height:1.6;color:#69818a}.utility-filters{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:12px}.utility-inspector button{border:1px solid #c4d9da;padding:7px;border-radius:4px;background:white}.utility-filters .active{background:#d8efed;color:#126f72}.utility-legend{display:flex;justify-content:space-between}.utility-source-label{position:absolute;transform:translate(12px,-50%);padding:5px 9px;border:2px solid;background:#fffffff5;border-radius:5px;color:#294854;font-size:11px;pointer-events:none;white-space:nowrap;box-shadow:0 2px 8px #1e465222}
 .avatar-select{background:#345258;color:#fff;border:1px solid #91aaa6;border-radius:4px;padding:3px;margin-right:8px}
 .aim-crosshair{position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);pointer-events:none;display:grid;place-items:center;border:1px solid transparent;border-radius:50%;transition:border-color .12s,box-shadow .12s}.aim-crosshair span{width:4px;height:4px;background:#fff;border-radius:50%;box-shadow:0 0 2px 1px #182e3980}.aim-crosshair.can-interact{border-color:#b8f0e2;box-shadow:0 0 3px #183c4380}.aim-crosshair.can-interact span{background:#b8f0e2}
 .interaction-prompt{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:12px 18px;border-radius:12px;background:#183c43ed;color:white;box-shadow:0 4px 20px #12343c22;pointer-events:none;font-size:14px}.interaction-prompt kbd{display:grid;place-items:center;width:34px;height:34px;background:#fff;color:#215b61;border-radius:7px;font-size:19px;font-weight:700}.interaction-prompt span{display:grid;gap:4px}.interaction-prompt small{font-size:11px;color:#b9d6d7}.life-panel button.life-selected{background:#e1f2ee;box-shadow:inset 3px 0 #287b77;padding-left:10px}

@@ -3,6 +3,7 @@ import type { Plan, Vec2, UtilityKind, UtilityPoint } from '@/modules/model/type
 import { defaultRenovation } from '@/modules/renovation/model';
 import { nearestWallPoint } from '@/modules/geometry/nearest-wall';
 import { type Zone, zoneBounds, zoneContains } from './detailed';
+import { connectWaterNetwork,isWater } from '@/modules/renovation/water-network';
 
 export function configureServices(plan: Plan, zones: Zone[]) {
   plan.renovation=defaultRenovation();
@@ -14,9 +15,14 @@ export function configureServices(plan: Plan, zones: Zone[]) {
     const wall=plan.walls[near.wallId],a=plan.nodes[wall.startNodeId].position,b=plan.nodes[wall.endNodeId].position;
     const len=Math.hypot(b.x-a.x,b.y-a.y),nx=-(b.y-a.y)/len,ny=(b.x-a.x)/len;
     const sign=(position.x-near.foot.x)*nx+(position.y-near.foot.y)*ny>=0?1:-1;
-    const p={x:near.foot.x+nx*sign*8,y:near.foot.y+ny*sign*8};
+    // Separate hot/cold along the wall tangent, not the wall normal (projection
+    // would collapse a normal offset back onto exactly the same point).
+    const shift=kind==='cold-water'?8:kind==='hot-water'?-8:0;
+    const along=Math.max(12,Math.min(len-12,near.offset+shift));
+    const p={x:a.x+(b.x-a.x)/len*along+nx*sign*8,y:a.y+(b.y-a.y)/len*along+ny*sign*8};
     const id=add(kind,label,[p],height,circuit);
     plan.renovation!.utilities[id].rotation=Math.atan2(nx*sign,-ny*sign);
+    if(isWater(kind)){plan.renovation!.utilities[id].role='terminal';return;}
     const routeKind=kind==='socket'||kind==='switch'?'electric':kind;
     const trunk=routeKind==='electric'?255:kind==='drain'?5:20;
     add(routeKind,`${label} · 支路`,[{...p,height},{...p,height:trunk},{x:a.x+nx*sign*8,y:a.y+ny*sign*8,height:trunk}],trunk,circuit);
@@ -45,4 +51,5 @@ export function configureServices(plan: Plan, zones: Zone[]) {
       break;
     }
   }
+  plan.renovation.utilities=connectWaterNetwork(plan).utilities;
 }
