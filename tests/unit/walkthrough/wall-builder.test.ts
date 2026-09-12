@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Mesh, BoxGeometry } from 'three';
+import { Mesh, BoxGeometry, Raycaster, Vector3 } from 'three';
 import { buildWalls } from '@/modules/walkthrough/builders/wall-builder';
 import { createEmptyPlan } from '@/modules/model/defaults';
 import type { Plan } from '@/modules/model/types';
@@ -18,7 +18,8 @@ describe('WallBuilder', () => {
     const plan = prepPlan();
     const { group, meshesByWallId } = buildWalls(plan);
 
-    expect(group.children).toHaveLength(1);
+    expect(group.children.filter(child=>child.userData.wallId)).toHaveLength(1);
+    expect(group.getObjectByName('cutaway-caps')?.children).toHaveLength(1);
     const meshes = meshesByWallId['w1'];
     expect(meshes).toHaveLength(1);
 
@@ -49,8 +50,17 @@ describe('WallBuilder', () => {
       hinge: 'start',
       swing: 'inside',
     };
-    const { meshesByWallId } = buildWalls(plan);
+    const { group,meshesByWallId } = buildWalls(plan);
     expect(meshesByWallId['w1']).toHaveLength(3);
+    const caps=group.getObjectByName('cutaway-caps')!;
+    expect(caps.children).toHaveLength(1);
+    const cap=caps.children[0] as Mesh;
+    expect(cap.visible).toBe(false);expect(cap.geometry.index!.count/3).toBe(4);
+    cap.visible=true;group.updateMatrixWorld(true);
+    const ray=new Raycaster(new Vector3(2,2,0),new Vector3(0,-1,0));
+    expect(ray.intersectObject(caps,true)).toHaveLength(0);
+    ray.set(new Vector3(1,2,0),new Vector3(0,-1,0));
+    expect(ray.intersectObject(caps,true)[0].point.y).toBeCloseTo(1.05,4);
   });
 
   it('垂直墙 (0,0)→(0,400) → 3D 沿 +z，mesh.rotation.y = -π/2', () => {

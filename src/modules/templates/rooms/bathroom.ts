@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { createEmptyPlan } from '@/modules/model/defaults';
+import { defaultRenovation } from '@/modules/renovation/model';
 import { buildClosedWalls, addDoor, addWindow, addFurniture, recomputeRooms, type TemplateMeta } from '../_utils';
 
 export const bathroomTemplate: TemplateMeta = {
@@ -9,6 +10,8 @@ export const bathroomTemplate: TemplateMeta = {
   description: '马桶 + 洗手池 + 淋浴',
   build: (name) => {
     const p = createEmptyPlan(nanoid(), name);
+    p.renovation = defaultRenovation();
+    p.renovation.finish = { floor: 'tile', floorColor: '#c9c4b9', wallColor: '#eee8dd' };
     // 240×250 cm
     const w = buildClosedWalls(p, [
       [0, 0],

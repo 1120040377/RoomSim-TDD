@@ -1,9 +1,21 @@
 import { Group, Box3 } from 'three';
+import {markWallDecorations} from '../wall-decoration-cutaway';
 import { buildStorage, STORAGE_TYPES } from './furniture/storage';
 import type { Furniture, FurnitureType, Plan } from '@/modules/model/types';
 import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
 import { CM_TO_M } from '../coord';
 import { type FurnitureBuilderFn, attachInteractable } from './furniture/shared';
+import { batchStaticParts } from './batch-static-parts';
+import { buildFloorPlant } from './furniture/plant';
+import { buildRug } from './furniture/rug';
+import { buildRailing } from './furniture/railing';
+import { buildRangeHood } from './furniture/range-hood';
+import { buildKitchenAccessories } from './furniture/kitchen-accessories';
+import { buildWallArt } from './furniture/wall-art';
+import { buildWallMirror } from './furniture/wall-mirror';
+import { buildTableLamp } from './furniture/table-lamp';
+import { buildBotanicalVase } from './furniture/botanical-vase';
+import { buildKitchenIsland, buildCounterStool } from './furniture/island';
 import { buildBedSingle, buildBedDouble, buildBedKingsize, buildWardrobe2, buildWardrobe3, buildSideTable } from './furniture/bedroom';
 import { buildSofa2, buildSofa3, buildSofaL, buildArmchair, buildCoffeeTable, buildTvCabinet, buildTv, buildBookshelf } from './furniture/livingroom';
 import { buildDiningTable4, buildDiningTable6, buildDiningChair } from './furniture/dining';
@@ -14,6 +26,17 @@ import { buildLampCeiling, buildLampFloor, buildLampWall, buildSwitch } from './
 import { buildPersonStanding, buildPersonSitting } from './furniture/person';
 
 const BUILDERS: Record<FurnitureType, FurnitureBuilderFn> = {
+  'wall-mirror': buildWallMirror,
+  'kitchen-island': buildKitchenIsland,
+  'counter-stool': buildCounterStool,
+  'botanical-vase': buildBotanicalVase,
+  'lamp-table': buildTableLamp,
+  'wall-art': buildWallArt,
+  'kitchen-accessories': buildKitchenAccessories,
+  'range-hood': buildRangeHood,
+  'railing': buildRailing,
+  'rug': buildRug,
+  'floor-plant': buildFloorPlant,
   'wall-cabinet': buildStorage,
   'washing-machine': buildStorage,
   'bed-single':       buildBedSingle,
@@ -60,11 +83,12 @@ export function buildFurniture(plan: Plan): Group {
   for (const f of Object.values(plan.furniture)) {
     group.add(buildOne(f, ceilingHeightCm));
   }
+  markWallDecorations(group,plan);
 
   return group;
 }
 
-function buildOne(f: Furniture, ceilingHeightCm: number): Group {
+export function buildOne(f: Furniture, ceilingHeightCm: number): Group {
   const def = FURNITURE_CATALOG[f.type];
   const g = new Group();
   g.name = `furniture-${f.id}`;
@@ -72,6 +96,8 @@ function buildOne(f: Furniture, ceilingHeightCm: number): Group {
 
   if(STORAGE_TYPES.has(f.type)) buildStorage(g,f);
   else BUILDERS[f.type](g, f, ceilingHeightCm);
+  batchStaticParts(g);
+  g.userData.localBaseY = new Box3().setFromObject(g).min.y;
 
   g.position.set(f.position.x * CM_TO_M, 0, f.position.y * CM_TO_M);
   if(f.elevation!==undefined) {

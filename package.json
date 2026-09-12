@@ -21,6 +21,7 @@
     "konva": "^9.3.0",
     "vue-konva": "^3.0.0",
     "three": "^0.160.0",
+    "three-mesh-bvh": "0.8.0",
     "@tresjs/core": "^3.7.0",
     "@tresjs/cientos": "^3.8.0",
     "dexie": "^4.0.0",

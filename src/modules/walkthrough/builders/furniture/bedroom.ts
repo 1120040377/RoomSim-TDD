@@ -1,35 +1,21 @@
-import {
-  BoxGeometry,
-  Color,
-  EdgesGeometry,
-  Group,
-  LineBasicMaterial,
-  LineSegments,
-  Mesh,
-  MeshStandardMaterial,
-} from 'three';
+import { Box3, Group, MeshStandardMaterial } from 'three';
 import type { Furniture } from '@/modules/model/types';
 import { CM_TO_M } from '../../coord';
 import { buildDefaultBox } from './shared';
+import { fabricMaterial, metalMaterial, woodMaterial } from './material-library';
+import { addCylinder, addRoundedBox } from './primitives';
+import { cushion, throwPillow } from './upholstery';
+import { addDuvet } from './bedding';
+import {buildDrapedThrow} from './model-throw';
 
 function makeBox(
   w: number, h: number, d: number,
   mat: MeshStandardMaterial,
   x: number, y: number, z: number,
   g: Group,
-  edge = false,
+  _edge = false,
 ): void {
-  const geom = new BoxGeometry(w, h, d);
-  const mesh = new Mesh(geom, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  g.add(mesh);
-  if (edge) {
-    const ln = new LineSegments(new EdgesGeometry(geom), new LineBasicMaterial({ color: 0x525252 }));
-    ln.position.copy(mesh.position);
-    g.add(ln);
-  }
+  addRoundedBox(g, w, h, d, mat, x, y, z);
 }
 
 // ─── 床通用结构 ────────────────────────────────────────────────────────────────
@@ -43,53 +29,53 @@ function buildBedBody(
   const W = f.size.width * CM_TO_M;
   const D = f.size.depth * CM_TO_M;
 
-  const matWoodDark = new MeshStandardMaterial({ color: 0x4a2f1a, roughness: 0.8 });
-  const matWood     = new MeshStandardMaterial({ color: 0x7a5230, roughness: 0.7 });
-  const matMattress = new MeshStandardMaterial({ color: 0xf0ece0, roughness: 0.9 });
-  const matPillow   = new MeshStandardMaterial({ color: 0xf5f2ea, roughness: 0.95 });
-  const matBlanket  = new MeshStandardMaterial({ color: new Color(f.color ?? '#d4b895'), roughness: 0.85 });
+  const matWoodDark = woodMaterial('#422d20', 2);
+  const matWood = woodMaterial('#74553a', 3);
+  const matMattress = fabricMaterial('#e9e3d8', 4);
+  const matPillow = fabricMaterial('#f4f0e7', 5);
 
   const ls = legSize * CM_TO_M;
-  const legH = 0.22;
+  const deck = f.size.height * CM_TO_M;
+  const legH = deck * 0.3;
   const lx = W / 2 - ls;
   const lz = D / 2 - ls;
   const corners: [number, number][] = [[-lx, -lz], [lx, -lz], [-lx, lz], [lx, lz]];
-  corners.forEach(([x, z]) => makeBox(ls, legH, ls, matWoodDark, x, legH / 2, z, g));
+  corners.forEach(([x, z]) => addCylinder(g, ls * 0.56, ls * 0.72, legH, matWoodDark, x, legH / 2, z, 12));
 
-  const baseH = 0.10;
+  const baseH = deck * 0.25;
   const baseY = legH + baseH / 2;
   makeBox(W - 0.10, baseH, D - 0.15, matWood, 0, baseY, 0.05, g);
 
-  const hbH = 0.68;
+  const hbH = deck * 1.65;
   const hbThick = 0.08;
   makeBox(W, hbH, hbThick, matWood, 0, hbH / 2, -(D / 2 - hbThick / 2), g);
+  cushion(g, W * 0.88, hbH * 0.7, 0.06, fabricMaterial('#b6aa96', 13), 0, hbH * 0.6, -D / 2 + hbThick + 0.02, 18);
 
-  const mattH = 0.18;
+  const mattH = deck * 0.45;
   const mattD = D - hbThick - 0.06;
   const mattZOff = D / 2 - mattD / 2 - hbThick / 2;
   const mattY = legH + baseH + mattH / 2;
-  makeBox(W - 0.04, mattH, mattD, matMattress, 0, mattY, -mattZOff, g, true);
+  cushion(g, W - 0.09, mattH, mattD, matMattress, 0, mattY, -mattZOff, 16);
 
-  const pillowH = 0.12;
+  const pillowH = 0.22;
   const pillowY = legH + baseH + mattH + pillowH / 2;
   const pillowZ = -(D / 2 - hbThick - 0.28);
-  const pillowW = (W - 0.10) / pillowCount - 0.04;
-  if (pillowCount === 1) {
-    makeBox(pillowW, pillowH, 0.42, matPillow, 0, pillowY, pillowZ, g);
-  } else {
-    const spacing = W / pillowCount;
-    for (let i = 0; i < pillowCount; i++) {
-      const px = -W / 2 + spacing * (i + 0.5);
-      makeBox(pillowW, pillowH, 0.42, matPillow, px, pillowY, pillowZ, g);
-    }
+  const pillowW = Math.min(0.68,(W - 0.10) / pillowCount - 0.05);
+  for (let i = 0; i < pillowCount; i++) {
+    const px = (i-(pillowCount-1)/2)*(pillowW+0.045);
+    const pillow = throwPillow(g,pillowW,0.48,pillowH,matPillow,px,pillowY,pillowZ+(i%2)*0.035,17+i);
+    pillow.name='bed-pillow';
+    pillow.rotation.set(-Math.PI/2+0.55,i===0?-0.055:0.075,i===0?0.035:-0.035);
+    // Fit the tilted lower surface to the mattress, rather than floating the
+    // pillow by half its nominal thickness after changing its orientation.
+    pillow.position.y += deck - 0.008 - new Box3().setFromObject(pillow,true).min.y;
   }
 
-  const blanketH = 0.06;
   const blanketD = mattD * 0.65;
   const mattFoot = -mattZOff + mattD / 2;
-  const blanketZ = mattFoot - blanketD / 2;
-  const blanketY = legH + baseH + mattH + blanketH / 2;
-  makeBox(W - 0.06, blanketH, blanketD, matBlanket, 0, blanketY, blanketZ, g, true);
+  addDuvet(g, W - 0.02, blanketD, deck, mattFoot, '#e3dccf');
+  if(!buildDrapedThrow(g,W,deck,mattFoot,f.color??'#879a7a'))
+    addDuvet(g, W - 0.01, blanketD * 0.48, deck + 0.028, mattFoot + 0.008, f.color ?? '#879a7a','throw');
 }
 
 export function buildBedSingle(g: Group, f: Furniture, _ceilingHeightCm: number): void {
@@ -111,9 +97,9 @@ function buildWardrobe(g: Group, f: Furniture, doorCount: number): void {
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matBody  = new MeshStandardMaterial({ color: 0x8c6b3f, roughness: 0.7 });
-  const matDoor  = new MeshStandardMaterial({ color: 0xa07a4a, roughness: 0.6 });
-  const matMetal = new MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.4, metalness: 0.6 });
+  const matBody = woodMaterial('#785e3f', 9);
+  const matDoor = woodMaterial('#9d784d', 10);
+  const matMetal = metalMaterial('#a4a29a', 0.3);
 
   // 柜体
   makeBox(W, H, D, matBody, 0, H / 2, 0, g);
@@ -150,9 +136,9 @@ export function buildSideTable(g: Group, f: Furniture, _ceilingHeightCm: number)
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matWood  = new MeshStandardMaterial({ color: 0xa07a4a, roughness: 0.7 });
-  const matDark  = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.8 });
-  const matMetal = new MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.4, metalness: 0.6 });
+  const matWood = woodMaterial('#a27a4b', 11);
+  const matDark = woodMaterial('#533c28', 12);
+  const matMetal = metalMaterial('#a4a29a', 0.3);
 
   const legH = H * 0.32;
   const legS = 0.03;

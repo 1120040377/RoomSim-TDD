@@ -23,9 +23,9 @@ describe('精装生活模板',()=>{
       }
     }
   });
-  it('只公开六种方案，每个完整户型识别全部房间，开洞不超出墙段',()=>{
-    expect(BUILT_IN_TEMPLATES.map(t=>t.id)).toEqual(['blank','studio','one-bed-one-living','two-bed-one-living','two-bed-two-living','three-bed-two-living']);
-    const counts=[0,2,4,5,9,12];
+  it('公开七种方案（含材质样板间），每个完整户型识别全部房间，开洞不超出墙段',()=>{
+    expect(BUILT_IN_TEMPLATES.map(t=>t.id)).toEqual(['blank','material-showroom','studio','one-bed-one-living','two-bed-one-living','two-bed-two-living','three-bed-two-living']);
+    const counts=[0,7,2,4,5,9,12];
     BUILT_IN_TEMPLATES.forEach((tpl,i)=>{
       const p=tpl.build(tpl.name);expect(PlanSchema.safeParse(p).success).toBe(true);expect(Object.keys(p.rooms).length,tpl.name).toBe(counts[i]);
       for(const o of Object.values(p.openings)){

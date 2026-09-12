@@ -42,7 +42,7 @@ const layouts: Layout[] = [
 ];
 
 /** Split shared edges at all junctions, then deduplicate so every room is connected. */
-function buildTopology(plan: Plan, zones: Zone[]) {
+export function buildTopology(plan: Plan, zones: Zone[]) {
   const all = zones.flatMap(z => z.polygon);
   const nodeByPoint = new Map<string,string>(); const wallKeys = new Set<string>();
   function node(p: Point) {
@@ -63,7 +63,7 @@ function buildTopology(plan: Plan, zones: Zone[]) {
     }
   });
 }
-function opening(plan: Plan, at: Point, window = false, width = 85,passage=false) {
+export function opening(plan: Plan, at: Point, window = false, width = 85,passage=false) {
   const near = nearestWallPoint({x:at[0],y:at[1]},plan,1); if (!near) throw new Error('Template opening has no wall');
   const w=plan.walls[near.wallId], a=plan.nodes[w.startNodeId].position,b=plan.nodes[w.endNodeId].position;
   const length=Math.hypot(a.x-b.x,a.y-b.y);
@@ -71,6 +71,7 @@ function opening(plan: Plan, at: Point, window = false, width = 85,passage=false
   if(actualWidth<60) throw new Error(`Template opening too narrow at ${at}`);
   const id=window ? addWindow(plan,w.id,near.offset,actualWidth) : addDoor(plan,w.id,near.offset,actualWidth);
   if (!window && plan.openings[id].kind==='door') {plan.openings[id].state=1;plan.openings[id].passage=passage;if(passage)plan.openings[id].height=250;}
+  return id;
 }
 export function zoneBounds(z: Zone) { const xs=z.polygon.map(p=>p[0]),ys=z.polygon.map(p=>p[1]); return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)}; }
 export function zoneContains(z: Zone, px:number,py:number) {

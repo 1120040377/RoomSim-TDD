@@ -8,7 +8,7 @@ export const WalkingPathRule: Rule = {
   id: 'walk-width',
   check(plan) {
     const warnings: Warning[] = [];
-    const fs = Object.values(plan.furniture);
+    const fs = Object.values(plan.furniture).filter(f => f.type !== 'rug');
     for (let i = 0; i < fs.length; i++) {
       for (let j = i + 1; j < fs.length; j++) {
         const d = furnitureDistance(fs[i], fs[j]);

@@ -1,10 +1,6 @@
 import {
-  BoxGeometry,
   Color,
-  EdgesGeometry,
   Group,
-  LineBasicMaterial,
-  LineSegments,
   Mesh,
   MeshStandardMaterial,
   type Object3D,
@@ -12,6 +8,7 @@ import {
 import type { Furniture } from '@/modules/model/types';
 import { FURNITURE_CATALOG, type InteractiveKind } from '@/modules/templates/furniture-catalog';
 import { CM_TO_M } from '../../coord';
+import { roundedBoxGeometry } from './primitives';
 
 export type FurnitureBuilderFn = (g: Group, f: Furniture, ceilingHeightCm: number) => void;
 
@@ -22,9 +19,9 @@ export function buildDefaultBox(g: Group, f: Furniture, ceilingHeightCm: number)
   const h = f.size.height * CM_TO_M;
 
   const color = new Color(f.color ?? def?.defaultColor ?? '#a3a3a3');
-  const mat = new MeshStandardMaterial({ color, roughness: 0.7 });
+  const mat = new MeshStandardMaterial({ color, roughness: 0.72 });
 
-  const geom = new BoxGeometry(w, h, d);
+  const geom = roundedBoxGeometry(w, h, d, 0.025);
   const mesh = new Mesh(geom, mat);
 
   if (def?.mountPoint === 'ceiling') {
@@ -38,10 +35,6 @@ export function buildDefaultBox(g: Group, f: Furniture, ceilingHeightCm: number)
   mesh.receiveShadow = true;
   g.add(mesh);
 
-  const edges = new EdgesGeometry(geom);
-  const line = new LineSegments(edges, new LineBasicMaterial({ color: 0x525252 }));
-  line.position.y = mesh.position.y;
-  g.add(line);
 }
 
 export function attachInteractable(g: Group, id: string, kind: InteractiveKind): void {

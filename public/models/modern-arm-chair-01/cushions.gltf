@@ -1,0 +1,132 @@
+{
+  "asset": {
+    "version": "2.0",
+    "generator": "RoomSim lossless cushion extraction from Poly Haven modern_arm_chair_01 (CC0)"
+  },
+  "scene": 0,
+  "scenes": [
+    {
+      "nodes": [
+        0
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "mesh": 0
+    }
+  ],
+  "meshes": [
+    {
+      "name": "modern_arm_chair_01_cushions",
+      "primitives": [
+        {
+          "attributes": {
+            "POSITION": 0,
+            "NORMAL": 1,
+            "TEXCOORD_0": 2
+          },
+          "indices": 3,
+          "material": 0
+        }
+      ]
+    }
+  ],
+  "materials": [
+    {
+      "doubleSided": true,
+      "name": "modern_arm_chair_01_pillow",
+      "normalTexture": {
+        "index": 0
+      },
+      "pbrMetallicRoughness": {}
+    }
+  ],
+  "textures": [
+    {
+      "sampler": 0,
+      "source": 0
+    }
+  ],
+  "samplers": [
+    {
+      "magFilter": 9729,
+      "minFilter": 9987
+    }
+  ],
+  "images": [
+    {
+      "mimeType": "image/jpeg",
+      "name": "modern_arm_chair_01_pillow_nor_gl",
+      "uri": "textures/modern_arm_chair_01_pillow_nor_gl_1k.jpg"
+    }
+  ],
+  "accessors": [
+    {
+      "bufferView": 0,
+      "componentType": 5126,
+      "count": 1967,
+      "max": [
+        0.3583531975746155,
+        1.0232336521148682,
+        0.38417327404022217
+      ],
+      "min": [
+        -0.3549351990222931,
+        0.34748637676239014,
+        -0.5754517316818237
+      ],
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 1,
+      "componentType": 5126,
+      "count": 1967,
+      "type": "VEC3"
+    },
+    {
+      "bufferView": 2,
+      "componentType": 5126,
+      "count": 1967,
+      "type": "VEC2"
+    },
+    {
+      "bufferView": 3,
+      "componentType": 5123,
+      "count": 9924,
+      "type": "SCALAR"
+    }
+  ],
+  "bufferViews": [
+    {
+      "buffer": 0,
+      "byteLength": 23604,
+      "byteOffset": 0,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 23604,
+      "byteOffset": 23604,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 15736,
+      "byteOffset": 47208,
+      "target": 34962
+    },
+    {
+      "buffer": 0,
+      "byteLength": 19848,
+      "byteOffset": 62944,
+      "target": 34963
+    }
+  ],
+  "buffers": [
+    {
+      "uri": "cushions.bin",
+      "byteLength": 82792
+    }
+  ]
+}

@@ -1,121 +1,45 @@
-import {
-  BoxGeometry,
-  Color,
-  EdgesGeometry,
-  Group,
-  LineBasicMaterial,
-  LineSegments,
-  Mesh,
-  MeshStandardMaterial,
-} from 'three';
+import { CylinderGeometry, Group, LatheGeometry, Mesh, MeshStandardMaterial, TorusGeometry, Vector2 } from 'three';
 import type { Furniture } from '@/modules/model/types';
 import { CM_TO_M } from '../../coord';
+import { fabricMaterial, metalMaterial, paintedMaterial, porcelainMaterial, woodMaterial } from './material-library';
+import { addCylinder, addRoundedBox } from './primitives';
+import { buildTailoredSofa, buildTailoredSectional } from './upholstery';
+import { buildModelArmchair } from './model-armchair';
+import { buildTelevision } from './television';
 
 function makeBox(
   w: number, h: number, d: number,
   mat: MeshStandardMaterial,
   x: number, y: number, z: number,
   g: Group,
-  edge = false,
+  _edge = false,
 ): void {
-  const geom = new BoxGeometry(w, h, d);
-  const mesh = new Mesh(geom, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  g.add(mesh);
-  if (edge) {
-    const ln = new LineSegments(new EdgesGeometry(geom), new LineBasicMaterial({ color: 0x525252 }));
-    ln.position.copy(mesh.position);
-    g.add(ln);
-  }
+  addRoundedBox(g, w, h, d, mat, x, y, z);
 }
 
-// ─── 沙发通用结构 ──────────────────────────────────────────────────────────────
-
-function buildSofaSection(
-  g: Group,
-  W: number, D: number,
-  cx: number, cz: number,
-  backAt: 'minZ' | 'maxZ' | 'minX' | 'maxX',
-  arms: ('minX' | 'maxX' | 'minZ' | 'maxZ')[],
-  color: string,
-): void {
-  const matBase = new MeshStandardMaterial({ color: 0x5a5a5a, roughness: 0.8 });
-  const matFab  = new MeshStandardMaterial({ color: new Color(color), roughness: 0.9 });
-
-  const baseH = 0.14;
-  const armW  = 0.20;
-  const backD = 0.22;
-  const seatH = 0.18;
-  const backH = 0.44;
-
-  // 底座
-  makeBox(W, baseH, D, matBase, cx, baseH / 2, cz, g);
-
-  const seatY = baseH + seatH / 2;
-
-  // 靠背
-  const backY = baseH + seatH + backH / 2;
-  if (backAt === 'minZ') {
-    makeBox(W, backH, backD, matFab, cx, backY, cz - D / 2 + backD / 2, g);
-    makeBox(W, seatH, D - backD, matFab, cx, seatY, cz + backD / 2, g, true);
-  } else if (backAt === 'maxZ') {
-    makeBox(W, backH, backD, matFab, cx, backY, cz + D / 2 - backD / 2, g);
-    makeBox(W, seatH, D - backD, matFab, cx, seatY, cz - backD / 2, g, true);
-  } else if (backAt === 'minX') {
-    makeBox(backD, backH, D, matFab, cx - W / 2 + backD / 2, backY, cz, g);
-    makeBox(W - backD, seatH, D, matFab, cx + backD / 2, seatY, cz, g, true);
-  } else {
-    makeBox(backD, backH, D, matFab, cx + W / 2 - backD / 2, backY, cz, g);
-    makeBox(W - backD, seatH, D, matFab, cx - backD / 2, seatY, cz, g, true);
-  }
-
-  // 扶手
-  const armH = seatH + backH;
-  const armY = baseH + armH / 2;
-  for (const arm of arms) {
-    if (arm === 'minX') makeBox(armW, armH, D, matFab, cx - W / 2 + armW / 2, armY, cz, g);
-    if (arm === 'maxX') makeBox(armW, armH, D, matFab, cx + W / 2 - armW / 2, armY, cz, g);
-    if (arm === 'minZ') makeBox(W, armH, armW, matFab, cx, armY, cz - D / 2 + armW / 2, g);
-    if (arm === 'maxZ') makeBox(W, armH, armW, matFab, cx, armY, cz + D / 2 - armW / 2, g);
-  }
-}
 
 export function buildSofa2(g: Group, f: Furniture, _ceilingHeightCm: number): void {
   const W = f.size.width * CM_TO_M;
   const D = f.size.depth * CM_TO_M;
-  buildSofaSection(g, W, D, 0, 0, 'maxZ', ['minX', 'maxX'], f.color ?? '#8a8a8a');
+  buildTailoredSofa(g, W, D, f.size.height * CM_TO_M, f.color ?? '#d9d0bf');
 }
 
 export function buildSofa3(g: Group, f: Furniture, _ceilingHeightCm: number): void {
   const W = f.size.width * CM_TO_M;
   const D = f.size.depth * CM_TO_M;
-  buildSofaSection(g, W, D, 0, 0, 'maxZ', ['minX', 'maxX'], f.color ?? '#8a8a8a');
+  buildTailoredSofa(g, W, D, f.size.height * CM_TO_M, f.color ?? '#d9d0bf');
 }
 
 export function buildSofaL(g: Group, f: Furniture, _ceilingHeightCm: number): void {
-  const W = f.size.width * CM_TO_M;   // 2.50
-  const D = f.size.depth * CM_TO_M;   // 1.80
-  const col = f.color ?? '#8a8a8a';
-  const segD = 0.90;
-
-  // A 段：沿 X 轴，靠背在 −Z 端，z∈[−D/2, −D/2+segD]
-  const az = -D / 2 + segD / 2;
-  buildSofaSection(g, W, segD, 0, az, 'minZ', ['minX', 'maxX'], col);
-
-  // B 段：垂直，靠背在 −X 端，x∈[−W/2, −W/2+segD]，z∈[−D/2+segD, D/2]
-  const bW = segD;
-  const bD = D - segD;
-  const bx = -W / 2 + bW / 2;
-  const bz = -D / 2 + segD + bD / 2;
-  buildSofaSection(g, bW, bD, bx, bz, 'minX', ['maxZ'], col);
+  buildTailoredSectional(g, f.size.width * CM_TO_M, f.size.depth * CM_TO_M,
+    f.size.height * CM_TO_M, f.color ?? '#d9d0bf');
 }
 
 export function buildArmchair(g: Group, f: Furniture, _ceilingHeightCm: number): void {
+  if(buildModelArmchair(g,f))return;
   const W = f.size.width * CM_TO_M;
   const D = f.size.depth * CM_TO_M;
-  buildSofaSection(g, W, D, 0, 0, 'maxZ', ['minX', 'maxX'], f.color ?? '#8a8a8a');
+  buildTailoredSofa(g, W, D, f.size.height * CM_TO_M, f.color ?? '#d9d0bf', false);
 }
 
 // ─── 茶几 ──────────────────────────────────────────────────────────────────────
@@ -125,18 +49,40 @@ export function buildCoffeeTable(g: Group, f: Furniture, _ceilingHeightCm: numbe
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matTop  = new MeshStandardMaterial({ color: 0xc8a96e, roughness: 0.5 });
-  const matLeg  = new MeshStandardMaterial({ color: 0x7a5a2a, roughness: 0.7 });
+  const matTop = woodMaterial(f.color ?? '#bd9c73', 3);
 
-  const topH = 0.05;
-  makeBox(W, topH, D, matTop, 0, H - topH / 2, 0, g, true);
-
-  const legH = H - topH;
-  const legS = 0.04;
-  const lx = W / 2 - legS - 0.02;
-  const lz = D / 2 - legS - 0.02;
-  const corners: [number, number][] = [[-lx, -lz], [lx, -lz], [-lx, lz], [lx, lz]];
-  corners.forEach(([x, z]) => makeBox(legS, legH, legS, matLeg, x, legH / 2, z, g));
+  const topH = Math.min(0.04,H*0.15), legH=H-topH;
+  const bevel=topH*0.18;
+  const profile=[[0,H-topH],[0.485,H-topH],[0.5,H-topH+bevel],[0.5,H-bevel],[0.493,H-bevel*0.25],[0.48,H],[0,H]];
+  const topGeometry=new LatheGeometry(profile.map(([r,y])=>new Vector2(r,y)),64);
+  topGeometry.scale(W,1,D);
+  const positions=topGeometry.getAttribute('position'),uv=topGeometry.getAttribute('uv');
+  // Planar metre-space grain across the top, not radial lathe UVs.
+  for(let i=0;i<positions.count;i++)uv.setXY(i,positions.getX(i)+W/2,positions.getZ(i)+D/2);
+  const tabletop=new Mesh(topGeometry,matTop);tabletop.castShadow=tabletop.receiveShadow=true;g.add(tabletop);
+  for(const angle of [Math.PI/6,Math.PI*5/6,Math.PI*1.5]){
+    const legGeometry=new CylinderGeometry(0.034,0.02,legH,16),p=legGeometry.getAttribute('position');
+    for(let i=0;i<p.count;i++){
+      const spread=0.5-p.getY(i)/legH;
+      p.setX(i,p.getX(i)+Math.cos(angle)*W*0.07*spread);
+      p.setZ(i,p.getZ(i)+Math.sin(angle)*D*0.07*spread);
+    }
+    legGeometry.computeVertexNormals();
+    const leg=new Mesh(legGeometry,matTop);leg.position.set(Math.cos(angle)*W*0.27,legH/2,Math.sin(angle)*D*0.27);
+    leg.castShadow=leg.receiveShadow=true;g.add(leg);
+  }
+  // A book and ceramic tray act as scale cues and make the sample room feel occupied.
+  const cover = fabricMaterial('#a9ad95', 8);
+  makeBox(0.28, 0.003, 0.18, cover, -W * 0.16, H + 0.0015, 0.03, g);
+  makeBox(0.272, 0.012, 0.172, paintedMaterial('#e9e3d5', 0.95), -W * 0.16, H + 0.009, 0.03, g);
+  makeBox(0.28, 0.003, 0.18, cover, -W * 0.16, H + 0.0165, 0.03, g);
+  const ceramic=porcelainMaterial('#ddd6c6');
+  const cupProfile=[[0,0],[0.027,0],[0.036,0.008],[0.043,0.069],[0.042,0.075],[0.037,0.075],[0.031,0.014],[0,0.014]];
+  const cup=new Mesh(new LatheGeometry(cupProfile.map(([r,y])=>new Vector2(r,y)),24),ceramic);
+  cup.position.set(W*0.17,H+0.006,-0.03);cup.castShadow=cup.receiveShadow=true;g.add(cup);
+  const handle=new Mesh(new TorusGeometry(0.022,0.005,8,20),ceramic);
+  handle.position.set(W*0.17+0.044,H+0.048,-0.03);handle.castShadow=handle.receiveShadow=true;g.add(handle);
+  addCylinder(g,0.059,0.055,0.006,ceramic,W*0.17,H+0.003,-0.03,32);
 }
 
 // ─── 电视柜 ────────────────────────────────────────────────────────────────────
@@ -146,9 +92,9 @@ export function buildTvCabinet(g: Group, f: Furniture, _ceilingHeightCm: number)
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matBody  = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.7 });
-  const matDiv   = new MeshStandardMaterial({ color: 0x2d2d2d, roughness: 0.5 });
-  const matMetal = new MeshStandardMaterial({ color: 0xb0b0b0, roughness: 0.3, metalness: 0.7 });
+  const matBody = woodMaterial('#765635', 4);
+  const matDiv = paintedMaterial('#393a37', 0.54);
+  const matMetal = metalMaterial('#8b8f8c', 0.26);
 
   makeBox(W, H - 0.04, D, matBody, 0, (H - 0.04) / 2, 0, g, true);
   makeBox(W, 0.04, D, matBody, 0, H - 0.02, 0, g);
@@ -166,22 +112,7 @@ export function buildTvCabinet(g: Group, f: Furniture, _ceilingHeightCm: number)
 // ─── 电视 ──────────────────────────────────────────────────────────────────────
 
 export function buildTv(g: Group, f: Furniture, _ceilingHeightCm: number): void {
-  const W = f.size.width * CM_TO_M;
-  const H = f.size.height * CM_TO_M;
-  const D = f.size.depth * CM_TO_M;
-
-  const matFrame  = new MeshStandardMaterial({ color: 0x2d2d2d, roughness: 0.5 });
-  const matScreen = new MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.1, metalness: 0.3 });
-  const matStand  = new MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.6 });
-
-  const frameY = H / 2;
-  makeBox(W, H, D, matFrame, 0, frameY, 0, g);
-  makeBox(W - 0.06, H - 0.06, 0.02, matScreen, 0, frameY, -(D / 2 + 0.01), g);
-
-  // 底座颈
-  makeBox(0.04, 0.20, 0.04, matStand, 0, 0.10, -(D / 2 + 0.06), g);
-  // 底座脚
-  makeBox(0.45, 0.04, 0.18, matStand, 0, 0.02, -(D / 2 + 0.12), g);
+  buildTelevision(g, f);
 }
 
 // ─── 书架 ──────────────────────────────────────────────────────────────────────
@@ -191,8 +122,8 @@ export function buildBookshelf(g: Group, f: Furniture, _ceilingHeightCm: number)
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matShelf = new MeshStandardMaterial({ color: 0xc4a265, roughness: 0.7 });
-  const matShelfInner = new MeshStandardMaterial({ color: 0xb09050, roughness: 0.7 });
+  const matShelf = woodMaterial('#af8752', 5);
+  const matShelfInner = woodMaterial('#8e6d42', 6);
 
   const t = 0.03; // 板厚
 

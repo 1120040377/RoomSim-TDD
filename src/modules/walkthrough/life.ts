@@ -1,3 +1,5 @@
+import { toggleTv } from './tv-playback';
+import { buildWaterEffect } from './water-effect';
 import { CylinderGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 import type { Furniture, Plan, Vec2 } from '@/modules/model/types';
 import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
@@ -40,17 +42,18 @@ export function nearbyFurniture(plan:Plan,position:Vec2):LifeTarget[] {
   // Prefer usable furniture over static dimension inspection at a similar distance.
   return targets.sort((a,b)=>(a.distance+(a.action==='inspect'?60:0))-(b.distance+(b.action==='inspect'?60:0)));
 }
-export function useObject(group:Group,f:Furniture):string {
+export function useObject(group:Group,f:Furniture,report?: (message:string)=>void):string {
   const action=actionFor(f);
   if(action==='storage'){toggleStorage(group);return `${FURNITURE_CATALOG[f.type].name}${group.userData.open?'已打开':'已关闭'}`;}
   if(action==='inspect')return `${FURNITURE_CATALOG[f.type].name}：${f.size.width} × ${f.size.depth} × ${f.size.height} cm`;
+  if(action==='tv') return toggleTv(group,report);
+  // This model has a closed lid: flushing must not emit a faucet jet above it.
+  if(f.type==='toilet')return '已冲水';
   group.userData.on=!group.userData.on;
-  if(action==='tv') {
-    const screen=group.children[1] as Mesh;
-    if(screen?.material instanceof MeshStandardMaterial){screen.material.emissive.set(group.userData.on?'#75b8d4':'#000000');screen.material.emissiveIntensity=0.8;}
-    return group.userData.on?'电视已开启':'电视已关闭';
-  }
   let effect=group.getObjectByName('life-effect');
+  if(!effect&&action==='water'){
+    effect=buildWaterEffect(group);group.add(effect);
+  }
   if(!effect){
     effect=new Group();effect.name='life-effect';group.add(effect);
     const isCook=action==='cook';

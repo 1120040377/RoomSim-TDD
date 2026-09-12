@@ -4,11 +4,12 @@ import { useRouter } from 'vue-router';
 import {
   HemisphereLight,
   ACESFilmicToneMapping,
-  PCFSoftShadowMap,
+  PCFShadowMap,
   SRGBColorSpace,
   Box3,
   Vector3,
   Mesh,
+  InstancedMesh,
   MeshStandardMaterial,
   Texture,
   Plane,
@@ -16,6 +17,8 @@ import {
   type Material,
   Color,
   DirectionalLight,
+  PMREMGenerator,
+  type WebGLRenderTarget,
   PerspectiveCamera,
   type PointLight,
   Scene,
@@ -23,6 +26,29 @@ import {
   type Group,
 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { InteriorOutputPass } from '@/modules/walkthrough/interior-output';
+import { InteriorOcclusionPass } from '@/modules/walkthrough/interior-occlusion';
+import { ShadowCache } from '@/modules/walkthrough/shadow-cache';
+import { FrameCache } from '@/modules/walkthrough/frame-cache';
+import { prepareRender, preparationBatches, prepareRenderBatch } from '@/modules/walkthrough/prepare-render';
+import {compileMaterialBatch} from '@/modules/walkthrough/compile-material-batch';
+import {waitForShaderPrograms} from '@/modules/walkthrough/shader-readiness';
+import {createExteriorBackdrop} from '@/modules/walkthrough/exterior-backdrop';
+import { inspectionOffset, setInspectionLens } from '@/modules/walkthrough/inspection-lens';
+import { fitSunShadow } from '@/modules/walkthrough/fit-sun-shadow';
+import { GpuFrameTimer } from '@/modules/walkthrough/gpu-frame-timer';
+import { CUTAWAY_HEIGHT, InspectionCutaway } from '@/modules/walkthrough/inspection-cutaway';
+import {updateWallDecorationCutaway} from '@/modules/walkthrough/wall-decoration-cutaway';
+import {installReceiverPlaneShadow} from '@/modules/walkthrough/receiver-plane-shadow';
+import {renderPixelRatio,type RenderResolution} from '@/modules/walkthrough/render-resolution';
+import {graphicsDiagnostics,type GraphicsDiagnostics} from '@/modules/walkthrough/graphics-diagnostics';
+import { reconcileFurniture } from '@/modules/walkthrough/reconcile-furniture';
+import { FURNITURE_CATALOG } from '@/modules/templates/furniture-catalog';
+import { DAYLIGHT_LOOK, NIGHT_LOOK } from '@/modules/walkthrough/lighting-look';
+import type { VerticalWallCaps } from '@/modules/walkthrough/vertical-wall-caps';
 import { buildUtilities } from '@/modules/walkthrough/builders/utility-builder';
 import { connectWaterNetwork,isWater } from '@/modules/renovation/water-network';
 import { utilityMatches,type UtilityFilter } from '@/modules/renovation/visibility';
@@ -39,6 +65,7 @@ import { SceneEditor, type SceneEditTool } from '@/modules/editor/scene-edit';
 import SceneEditorPanel from '@/components/SceneEditorPanel.vue';
 import { animateStorage } from '@/modules/walkthrough/builders/furniture/storage';
 import { nearbyFurniture, useObject, type LifeTarget } from '@/modules/walkthrough/life';
+import { animateWater } from '@/modules/walkthrough/water-effect';
 import { runtimeColliders } from '@/modules/walkthrough/runtime-colliders';
 import { AIM_SCREEN_Y, pickAimedObject } from '@/modules/walkthrough/aim';
 import { TargetHighlight } from '@/modules/walkthrough/target-highlight';
@@ -46,8 +73,11 @@ import type { AvatarKind } from '@/modules/walkthrough/builders/stylized-avatar'
 import { buildWalls } from '@/modules/walkthrough/builders/wall-builder';
 import { buildFloor } from '@/modules/walkthrough/builders/floor-builder';
 import { buildFurniture } from '@/modules/walkthrough/builders/furniture-builder';
+import { prepareArmchairModel, releaseArmchairModel } from '@/modules/walkthrough/builders/furniture/model-armchair';
+import {prepareDrapedThrow,releaseDrapedThrow} from '@/modules/walkthrough/builders/furniture/model-throw';
+import { needsUpholsteryAsset } from '@/modules/walkthrough/builders/furniture/upholstery-assets';
 import { buildOpenings } from '@/modules/walkthrough/builders/opening-builder';
-import { buildRoomLights, toggleLight } from '@/modules/walkthrough/lights';
+import { buildRoomLights, toggleLight, setLightEnabled } from '@/modules/walkthrough/lights';
 import { buildCollider } from '@/modules/walkthrough/collision-builder';
 import { DesktopFPS } from '@/modules/walkthrough/controls/DesktopFPS';
 import { getSpawnPoint } from '@/modules/walkthrough/spawn';
@@ -64,6 +94,8 @@ const lifeStatus=ref('拖动鼠标环绕观察，将屏幕中心准星对准家�
 const activeLifeTarget=ref<LifeTarget|null>(null);
 const targetHighlight=new TargetHighlight();
 let lifeTimer=0;
+// Plan geometry changes only on plan updates; door/drawer colliders remain dynamic.
+let staticObstacles: ReturnType<typeof buildCollider> = [];
 let sceneEditor:SceneEditor|null=null,stopAutoSave:(()=>void)|null=null;
 let floorGroup:Group|null=null,roomLightsGroup:Group|null=null;
 
@@ -80,9 +112,39 @@ const filteredUtilities=computed(()=>Object.values(planStore.plan?.renovation?.u
 const sourceLabels=ref<Array<{id:string;text:string;x:number;y:number;anchorY:number;color:string}>>([]);
 const cutaway = ref(true);
 const night = ref(false);
+const detailedShadows = ref(false);
+const renderResolution=ref<RenderResolution>('balanced');
+const graphicsPanel=ref(false);
+const graphicsInfo=shallowRef<GraphicsDiagnostics|null>(null);
+function refreshGraphicsInfo(){if(renderer)graphicsInfo.value=graphicsDiagnostics(renderer.getContext());}
+function toggleGraphicsPanel(){graphicsPanel.value=!graphicsPanel.value;if(graphicsPanel.value)refreshGraphicsInfo();}
+const floorBakeState=ref<'off'|'busy'|'ready'|'error'>('off');
+let floorBake:import('@/modules/walkthrough/baking/floor-bake').FloorBake|null=null;
+let floorBakeRevision=0;
+function invalidateFloorBake(){floorBakeRevision++;floorBake?.invalidate();floorBakeState.value='off';}
+async function toggleFloorBake(){
+  if(floorBakeState.value==='busy'||floorBakeState.value==='ready'){invalidateFloorBake();return;}
+  if(viewMode.value!=='orbit'||utilityVisible.value||!floorGroup||!wallGroup||!furnitureGroup)return;
+  if(furnitureGroup.children.some(child=>(child.userData.mechanisms??[]).some((m:{value:number;target:number})=>m.value!==m.target)))return;
+  const revision=++floorBakeRevision;floorBakeState.value='busy';
+  try{
+    const {FloorBake}=await import('@/modules/walkthrough/baking/floor-bake');
+    if(viewDisposed||revision!==floorBakeRevision)return;
+    floorBake??=new FloorBake();
+    const box=new Box3().setFromObject(floorGroup);
+    const ready=await floorBake.start([wallGroup,furnitureGroup,...(openingGroup?[openingGroup]:[])],floorGroup,
+      {minX:box.min.x,minZ:box.min.z,width:box.max.x-box.min.x,depth:box.max.z-box.min.z},wallGroup);
+    if(revision===floorBakeRevision)floorBakeState.value=ready?'ready':'off';
+  }catch(error){if(revision===floorBakeRevision){floorBakeState.value='error';console.warn('Floor contact bake failed',error);}}
+}
+const profileEnabled = new URLSearchParams(location.search).has('profile');
+const frameCache = new FrameCache();
+let gpuTimer: GpuFrameTimer | null = null;
+const frameProfile: Array<Record<string, number | string>> = [];
 let orbit: OrbitControls | null = null;
 let utilityGroup: Group | null = null;
 let wallGroup: Group | null = null;
+let verticalWallCaps:VerticalWallCaps|null=null;
 let openingGroup: Group | null = null;
 let sun: DirectionalLight | null = null;
 let ambient: HemisphereLight | null = null;
@@ -132,7 +194,18 @@ function revealCharacter() {
 }
 
 let renderer: WebGLRenderer | null = null;
+const shadowCache = new ShadowCache();
+const inspectionCutaway = new InspectionCutaway();
+let preserveInteriorBack = false;
+let composer: EffectComposer | null = null;
+let occlusionPass: InteriorOcclusionPass | null = null;
+let outputPass: InteriorOutputPass | null = null;
 let scene: Scene | null = null;
+let exteriorBackdrop:ReturnType<typeof createExteriorBackdrop>|null=null;
+let environmentTexture: Texture | null = null;
+let environmentTarget: WebGLRenderTarget | null = null;
+let environmentFrame = 0;
+let releaseReceiverPlaneShadow:(()=>void)|null=null;
 let camera: PerspectiveCamera | null = null;
 let controller: DesktopFPS | null = null;
 let doorPivots: Record<string, Group> = {};
@@ -143,13 +216,77 @@ let rafId = 0;
 let lastT = 0;
 
 const fpsCounter = shallowRef(0);
+const idleFrame = shallowRef(false);
+const invalidateFrame = () => { frameCache.invalidate();preparedPaths.clear(); };
 let frames = 0;
 let fpsTimer = 0;
 
+let viewDisposed=false;
+const preparingMaterials=ref(false);
+// Diagnostic opt-in only: a cold all-material draw can block for several seconds.
+const preparationMode=new URLSearchParams(window.location.search).get('prepare');
+const materialPreparationEnabled=['1','staged','async'].includes(preparationMode??'');
+let preparationAbort:AbortController|null=null;
+watch([viewMode,detailedShadows,cutaway],()=>preparationAbort?.abort());
+const preparedPaths=new Set<string>();
+let preparationFrame=0;
+let preparationMs=0;
+let preparationMaxSliceMs=0;
+const preparationProgress=ref('');
+function preparationKey():string {
+  return `${viewMode.value}/${detailedShadows.value}/${cutaway.value}/${!!scene?.environment}`;
+}
+function schedulePreparation():void {
+  if(!renderer||!scene||!camera||preparingMaterials.value)return;
+  const key=preparationKey();
+  preparingMaterials.value=true;
+  preparationProgress.value='';
+  const batches=preparationMode==='staged'||preparationMode==='async'?preparationBatches(scene):null;
+  const abort=new AbortController();preparationAbort=abort;
+  let batchIndex=0,started=0;
+  preparationMaxSliceMs=0;
+  const finish=()=>{
+    abort.abort();if(preparationAbort===abort)preparationAbort=null;
+    frameCache.invalidate();shadowCache.invalidate();
+    preparingMaterials.value=false;lastT=0;
+  };
+  const step=async()=>{
+    if(viewDisposed)return;
+    if(key!==preparationKey()){finish();return;}
+    if(!started)started=performance.now();
+    try{
+      if(preparationMode==='async'&&batches&&batchIndex<batches.length){
+        const compileStart=performance.now();
+        const programs=compileMaterialBatch(renderer!,scene!,camera!,batches[batchIndex],detailedShadows.value);
+        preparationMaxSliceMs=Math.max(preparationMaxSliceMs,performance.now()-compileStart);
+        const readiness=await waitForShaderPrograms(renderer!.getContext(),programs,abort.signal);
+        if(viewDisposed)return;
+        if(abort.signal.aborted||key!==preparationKey()){finish();return;}
+        if(readiness!=='ready')throw new Error(`Shader preparation ${readiness}`);
+      }
+      const sliceStart=performance.now();
+      if(batches){
+        if(batchIndex<batches.length)prepareRenderBatch(renderer!,scene!,batches[batchIndex++],drawScene,(w,h)=>composer?.setSize(w,h));
+        preparationProgress.value=`${batchIndex}/${batches.length}`;
+      }else prepareRender(renderer!,scene!,drawScene,(w,h)=>composer?.setSize(w,h));
+      preparationMaxSliceMs=Math.max(preparationMaxSliceMs,performance.now()-sliceStart);
+      if(batches&&batchIndex<batches.length){preparationFrame=requestAnimationFrame(step);return;}
+      preparationMs=performance.now()-started;preparedPaths.add(key);finish();
+    }catch(error){
+      preparedPaths.add(key);finish();
+      console.warn('Material preparation failed; falling back to normal rendering',error);
+    }
+  };
+  // Give Vue and the browser a paint opportunity before synchronous driver work.
+  preparationFrame=requestAnimationFrame(()=>{
+    preparationFrame=requestAnimationFrame(step);
+  });
+}
 onMounted(async () => {
   let plan = planStore.plan;
   if (!plan || plan.id !== props.id) {
     plan = await planRepo.get(props.id);
+    if(viewDisposed)return;
     if (!plan) {
       router.push('/');
       return;
@@ -158,6 +295,12 @@ onMounted(async () => {
   }
 
   try {
+    const furniture=Object.values(plan.furniture);
+    await Promise.all([
+      needsUpholsteryAsset(furniture)?prepareArmchairModel(!furniture.some(f=>f.type==='armchair')):Promise.resolve(false),
+      furniture.some(f=>f.type.startsWith('bed-')&&f.size.width===150&&f.size.depth===200&&f.size.height===45)?prepareDrapedThrow():Promise.resolve(false),
+    ]);
+    if(viewDisposed)return;
     initScene();
   } catch (err) {
     errorMsg.value = err instanceof Error ? err.message : '3D 初始化失败';
@@ -173,6 +316,11 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  viewDisposed=true;
+  if(exteriorBackdrop){scene?.remove(exteriorBackdrop.mesh);exteriorBackdrop.dispose();exteriorBackdrop=null;}
+  preparationAbort?.abort();preparationAbort=null;
+  cancelAnimationFrame(preparationFrame);
+  invalidateFloorBake();floorBake?.dispose();floorBake=null;
   targetHighlight.clear();
   stopAutoSave?.();sceneEditor?.dispose();
   cancelAnimationFrame(rafId);
@@ -183,6 +331,7 @@ onBeforeUnmount(() => {
   orbit?.dispose();
   const disposed = new Set<unknown>();
   scene?.traverse(object => {
+    if (object instanceof InstancedMesh) object.dispose();
     const mesh = object as Mesh;
     if (mesh.geometry && !disposed.has(mesh.geometry)) { mesh.geometry.dispose(); disposed.add(mesh.geometry); }
     const materials = mesh.material ? (Array.isArray(mesh.material) ? mesh.material : [mesh.material]) : [];
@@ -194,8 +343,21 @@ onBeforeUnmount(() => {
       material.dispose(); disposed.add(material);
     }
   });
+  releaseArmchairModel();
+  releaseDrapedThrow();
   sun?.shadow.dispose();
+  occlusionPass?.dispose();
+  outputPass?.dispose();
+  composer?.dispose();
+  cancelAnimationFrame(environmentFrame);
+  environmentTarget?.dispose();
+  environmentTarget = null;
+  environmentTexture = null;
+  gpuTimer?.dispose();
+  gpuTimer = null;
+  renderer?.domElement.removeEventListener('webglcontextrestored',invalidateFrame);
   renderer?.dispose();
+  releaseReceiverPlaneShadow?.();releaseReceiverPlaneShadow=null;
   renderer?.forceContextLoss?.();
   window.removeEventListener('resize', onResize);
   document.removeEventListener('pointerlockchange', onLockChange);
@@ -207,7 +369,8 @@ function initScene() {
   personHeight.value = plan.walkthrough.personHeight;
 
   scene = new Scene();
-  scene.background = new Color('#e7ecee');
+  scene.background = new Color(DAYLIGHT_LOOK.background);
+  exteriorBackdrop=createExteriorBackdrop(()=>frameCache.invalidate());scene.add(exteriorBackdrop.mesh);
 
   const container = canvasRef.value!.parentElement!;
   const w = container.clientWidth;
@@ -223,26 +386,33 @@ function initScene() {
   );
 
   renderer = new WebGLRenderer({ canvas: canvasRef.value!, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  // Screen derivatives are core in WebGL2. Keep the stock path on WebGL1.
+  if(renderer.capabilities.isWebGL2)releaseReceiverPlaneShadow=installReceiverPlaneShadow();
+  renderer.domElement.addEventListener('webglcontextrestored',invalidateFrame);
+  if (profileEnabled) gpuTimer = new GpuFrameTimer(renderer.getContext() as WebGL2RenderingContext);
+  renderer.setPixelRatio(renderPixelRatio(w,h,window.devicePixelRatio,renderResolution.value));
   renderer.setSize(w, h, false);
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
+  renderer.toneMappingExposure = DAYLIGHT_LOOK.exposure;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = PCFSoftShadowMap;
+  // r160 PCFSoft has a fixed one-texel footprint and ignores shadow.radius.
+  // PCF uses 17 depth comparisons (vs 16) with an adjustable footprint.
+  renderer.shadowMap.type = PCFShadowMap;
   renderer.localClippingEnabled = true;
 
   // 环境光 + 平行光
-  ambient = new HemisphereLight('#eaf4ff', '#b5a08b', 1.5);
+  ambient = new HemisphereLight(DAYLIGHT_LOOK.sky, DAYLIGHT_LOOK.ground, DAYLIGHT_LOOK.fillIntensity);
   scene.add(ambient);
-  sun = new DirectionalLight('#fff1dc', 2.5);
+  sun = new DirectionalLight(DAYLIGHT_LOOK.sun, DAYLIGHT_LOOK.sunIntensity);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.normalBias = 0.025;
+  sun.shadow.normalBias = 0.006;
+  sun.shadow.radius = 2.5; // Initial fallback; fitSunShadow sets a world-scale footprint.
   scene.add(sun);
 
   floorGroup=buildFloor(plan);scene.add(floorGroup);
-  wallGroup = buildWalls(plan).group;
+  const walls=buildWalls(plan);wallGroup=walls.group;verticalWallCaps=walls.verticalCaps;
   scene.add(wallGroup);
   const openings = buildOpenings(plan);
   scene.add(openings.group);
@@ -261,11 +431,12 @@ function initScene() {
   modelCenter.y = 0;
   const size = bounds.getSize(new Vector3());
   modelSize = Math.max(size.x, size.z, 4);
-  sun.position.copy(modelCenter).add(new Vector3(modelSize * 0.3, modelSize, modelSize * 0.5));
+  sun.position.copy(modelCenter).add(new Vector3(-modelSize * 0.4, modelSize, modelSize * 0.55));
   sun.target.position.copy(modelCenter);
   scene.add(sun.target);
   Object.assign(sun.shadow.camera, { left: -modelSize, right: modelSize, top: modelSize, bottom: -modelSize, near: 0.1, far: modelSize * 4 });
   sun.shadow.camera.updateProjectionMatrix();
+  fitSunShadow(sun, [wallGroup, floorGroup, furnitureGroup, openingGroup],renderer.capabilities.isWebGL2);
 
   const rl = buildRoomLights(plan);
   scene.add(rl.group);
@@ -273,7 +444,7 @@ function initScene() {
   lightsByFurnitureId = rl.lightsByFurnitureId;
   allLights = Object.values(lightsByFurnitureId);
 
-  const obstacles = buildCollider(plan);
+  const obstacles = staticObstacles = buildCollider(plan);
   controller = new DesktopFPS(camera, obstacles, canvasRef.value!, personHeight.value);
   thirdPerson = new ThirdPerson(camera, canvasRef.value!, obstacles);
   thirdPerson.setHeight(personHeight.value);
@@ -284,8 +455,9 @@ function initScene() {
   orbit.enableDamping = true;
   orbit.maxPolarAngle = Math.PI / 2 - 0.04;
   orbit.minDistance = 1;
-  orbit.maxDistance = modelSize * 5;
+  orbit.maxDistance = modelSize * 10;
   setMode('third');
+  installMaterialEnvironment();
   sceneEditor=new SceneEditor(camera,scene,canvasRef.value!,()=>planStore.plan!,()=>({furniture:furnitureGroup!,utilities:utilityGroup!,walls:wallGroup!}),
     selectEdited,dragging=>{if(orbit)orbit.enabled=!dragging&&viewMode.value==='edit';},message=>{editNotice.value=message;});
 
@@ -295,22 +467,45 @@ function initScene() {
   camera.add(fpArms);
 }
 
+function installMaterialEnvironment() {
+  // Do this after the scene is interactive; generating the reflection atlas must not delay pointer lock.
+  environmentFrame = requestAnimationFrame(() => {
+    if (!renderer || !scene || environmentTexture) return;
+    const pmrem = new PMREMGenerator(renderer);
+    const studio = new RoomEnvironment(renderer);
+    try {
+      environmentTarget = pmrem.fromScene(studio, 0.04);
+      environmentTexture = environmentTarget.texture;
+      scene.environment = night.value ? null : environmentTexture;
+    } finally {
+      studio.dispose();
+      pmrem.dispose();
+    }
+  });
+}
+
 function tick(t: number) {
   rafId = requestAnimationFrame(tick);
   if (!renderer || !scene || !camera || !controller) return;
+  if(preparingMaterials.value)return;
   const dt = lastT === 0 ? 0 : (t - lastT) / 1000;
+  const profileStart = performance.now();
   lastT = t;
 
   if (viewMode.value === 'walk') controller.update(Math.min(dt, 0.1));
   else if (viewMode.value === 'third') {
     thirdPerson?.update(Math.min(dt, 0.1));
-    revealCharacter();
   } else orbit?.update();
+  const controlEnd = performance.now();
+  exteriorBackdrop?.update(camera);
+  if (viewMode.value === 'third') revealCharacter();
+  const occlusionEnd = performance.now();
   if(furnitureGroup)animateStorage(furnitureGroup,Math.min(dt,0.1));
+  if(furnitureGroup)animateWater(furnitureGroup,Math.min(dt,0.1));
   lifeTimer+=dt;
   if(lifeTimer>0.15&&planStore.plan&&thirdPerson){
     lifeTimer=0;
-    if(furnitureGroup){const obstacles=[...buildCollider(planStore.plan),...runtimeColliders(furnitureGroup,doorPivots,personHeight.value)];thirdPerson.setObstacles(obstacles);controller?.setObstacles(obstacles);}
+    if(furnitureGroup){const obstacles=[...staticObstacles,...runtimeColliders(furnitureGroup,doorPivots,personHeight.value)];thirdPerson.setObstacles(obstacles);controller?.setObstacles(obstacles);}
   }
 
   if(viewMode.value==='third'||viewMode.value==='walk'){
@@ -333,9 +528,56 @@ function tick(t: number) {
   }else sourceLabels.value=[];
 
 
-  renderer.render(scene, camera);
+  if (viewMode.value === 'orbit' && cutaway.value && orbit) {
+    inspectionCutaway.update(camera.position, orbit.target);
+    verticalWallCaps?.update(inspectionCutaway.planes[1], preserveInteriorBack);
+  }
+  const logicEnd = performance.now();
+  if(materialPreparationEnabled&&(viewMode.value==='orbit'||viewMode.value==='edit')&&!preparedPaths.has(preparationKey())){
+    schedulePreparation();return;
+  }
+  // The sun's fixed projection does not depend on the viewing camera. Reuse its
+  // depth map in ALL modes while stationary; avatar limbs and animated doors
+  // are included in the signature, so movement still updates every frame.
+  renderer.shadowMap.autoUpdate = !sun;
+  if (sun) renderer.shadowMap.needsUpdate = shadowCache.needsUpdate(scene, sun);
+  const shadowUpdated = renderer.shadowMap.autoUpdate || renderer.shadowMap.needsUpdate;
+  const shadowCheckEnd = performance.now();
+  if (profileEnabled) renderer.info.autoReset = false;
+  renderer.info.reset();
+  const rendered=frameCache.needsRender(scene,camera,[renderer.domElement.width,renderer.domElement.height,renderer.toneMappingExposure,
+    detailedShadows.value,viewMode.value,shadowUpdated]);
+  const frameCheckEnd=performance.now();
+  idleFrame.value=!rendered;
+  if(!rendered)gpuTimer?.poll();
+  const gpuSample: Record<string, number | string> = { gpuMs: gpuTimer?.supported ? 'skipped' : 'unsupported' };
+  if(rendered){
+  if (gpuTimer?.begin(ms => { gpuSample.gpuMs = ms ?? 'invalid'; })) gpuSample.gpuMs = 'pending';
+  try {
+  drawScene();
+  } catch(error) { frameCache.invalidate(); throw error; } finally { gpuTimer?.end(); }
+  }
+  if (profileEnabled) {
+    Object.assign(gpuSample, { preparationMs, preparationMaxSliceMs, mode: viewMode.value, ao: Number(detailedShadows.value), shadowUpdated: Number(shadowUpdated),
+      rendered:Number(rendered),frameCheckMs:frameCheckEnd-shadowCheckEnd,
+      aoUpdated: Number(rendered && detailedShadows.value && (viewMode.value === 'orbit' || viewMode.value === 'edit') && occlusionPass?.recomputedLastFrame),
+      frameMs: dt * 1000, controlsMs: controlEnd - profileStart,
+      occlusionMs: occlusionEnd - controlEnd, logicMs: logicEnd - occlusionEnd,
+      shadowCheckMs: shadowCheckEnd - logicEnd, renderSubmitMs: rendered ? performance.now() - frameCheckEnd : 0,
+      bufferWidth: renderer.domElement.width, bufferHeight: renderer.domElement.height,
+      pixelRatio: renderer.getPixelRatio(), pointLights: allLights.filter(light => light.visible).length,
+      importedModels: furnitureGroup?.children.filter(object=>object.userData.assetModel).length ?? 0,
+      cameraPosition: camera.position.toArray(), cameraQuaternion: camera.quaternion.toArray(),
+      avatarPosition: thirdPerson?.avatar.group.position.toArray(),
+      calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+      geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
+      programs: renderer.info.programs?.length ?? 0 });
+    frameProfile.push(gpuSample);
+    if (frameProfile.length > 300) frameProfile.shift();
+    (window as unknown as { roomSimProfile: typeof frameProfile }).roomSimProfile = frameProfile;
+  }
 
-  frames++;
+  if(rendered)frames++;
   fpsTimer += dt;
   if (fpsTimer >= 0.5) {
     fpsCounter.value = Math.round(frames / fpsTimer);
@@ -344,9 +586,43 @@ function tick(t: number) {
   }
 }
 
+function drawScene():void {
+  if(!renderer||!scene||!camera)return;
+  if (detailedShadows.value && (viewMode.value === 'orbit' || viewMode.value === 'edit')) {
+    if (!composer) {
+      composer = new EffectComposer(renderer);
+      if (renderer.capabilities.isWebGL2) {
+        composer.renderTarget1.samples = 4;
+        composer.renderTarget2.samples = 4;
+      }
+      composer.addPass(new RenderPass(scene, camera));
+      occlusionPass = new InteriorOcclusionPass(scene, camera, 512, 512, 16);
+      occlusionPass.kernelRadius = 0.2;
+      occlusionPass.minDistance = 0.0001;
+      occlusionPass.maxDistance = 0.006;
+      composer.addPass(occlusionPass);
+      outputPass = new InteriorOutputPass(occlusionPass.useOutputComposite(renderer.capabilities.isWebGL2));
+      composer.addPass(outputPass);
+    }
+    const background = scene.background;
+    const clearColor = renderer.getClearColor(new Color());
+    const clearAlpha = renderer.getClearAlpha();
+    try {
+      outputPass?.setBackground(background instanceof Color ? background : clearColor);
+      scene.background = null;
+      renderer.setClearColor(0x000000, 0);
+      composer.render();
+    } finally {
+      scene.background = background;
+      renderer.setClearColor(clearColor, clearAlpha);
+    }
+  } else renderer.render(scene, camera);
+}
+
 
 function doInteract(info: InteractableInfo) {
   if (info.kind === 'door') {
+    invalidateFloorBake();
     const pivot = doorPivots[info.targetId];
     if (!pivot) return;
     const cur = (pivot.userData.state as number) ?? 0;
@@ -358,29 +634,38 @@ function doInteract(info: InteractableInfo) {
   if (info.kind === 'light') {
     const l = lightsByFurnitureId[info.targetId];
     if (l) toggleLight(l);
+    syncLampSurfaces();
     return;
   }
   if (info.kind === 'switch') {
     // 开关切换房间内所有灯
     if (allLights.length === 0) return;
     const anyOn = allLights.some((l) => l.intensity > 0);
-    for (const l of allLights) l.intensity = anyOn ? 0 : 1.0;
+    for (const l of allLights) setLightEnabled(l, !anyOn);
+    syncLampSurfaces();
     return;
   }
   if (info.kind === 'tv') {
-    // 占位：切换家具颜色示意播放/暂停
-    // TODO: P1 用 VideoTexture 实现
+    const f=planStore.plan?.furniture[info.targetId];
+    const g=furnitureGroup?.children.find(o=>o.userData.furnitureId===info.targetId) as Group|undefined;
+    if(f&&g)lifeStatus.value=useObject(g,f,message=>{lifeStatus.value=message;});
   }
 }
 
 function onResize() {
+  frameCache.invalidate();
   if (!canvasRef.value || !renderer || !camera) return;
   const container = canvasRef.value.parentElement!;
   const w = container.clientWidth;
   const h = container.clientHeight;
+  const ratio=renderPixelRatio(w,h,window.devicePixelRatio,renderResolution.value);
+  renderer.setPixelRatio(ratio);
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  composer?.setPixelRatio(ratio);
+  composer?.setSize(w, h);
+  if(graphicsPanel.value)refreshGraphicsInfo();
   thirdPerson?.setHeight(personHeight.value);
 }
 
@@ -426,14 +711,79 @@ function changeHeight(delta: number) {
 }
 
 function resetView() {
+  preserveInteriorBack = false;
+  updateLayers(false);
   if (viewMode.value === 'third') { thirdPerson?.resetCamera(); return; }
   if (!camera || !orbit) return;
-  const distance = modelSize * Math.max(1, 1 / camera.aspect);
-  camera.position.copy(modelCenter).add(new Vector3(-distance * 0.7, distance * 1.1, -distance * 0.85));
+  const distance = modelSize * 0.63 * Math.max(1, 1 / camera.aspect);
+  camera.position.copy(modelCenter).add(inspectionOffset(new Vector3(-distance * 0.7, distance * 0.85, distance * 0.85)));
   orbit.target.copy(modelCenter);
   orbit.update();
 }
+function focusLivingRoom() {
+  const sofa = Object.values(planStore.plan?.furniture ?? {}).find(f => ['sofa-3', 'sofa-2', 'sofa-l'].includes(f.type));
+  if (!sofa || !camera || !orbit) return;
+  setMode('orbit');
+  const center = new Vector3(sofa.position.x * CM_TO_M, 0.48, sofa.position.y * CM_TO_M);
+  const offset = new Vector3(sofa.type === 'sofa-l' ? 2.1 : -2.1, 1.65, sofa.type === 'sofa-l' ? 2.5 : -2.5)
+    .applyAxisAngle(new Vector3(0, 1, 0), -sofa.rotation);
+  camera.position.copy(center).add(inspectionOffset(offset));
+  orbit.target.copy(center);
+  orbit.update();
+}
+function focusBathroom() {
+  const basin = Object.values(planStore.plan?.furniture ?? {}).find(f => f.type === 'basin');
+  if (!basin || !camera || !orbit) return;
+  setMode('orbit');
+  const center = new Vector3(basin.position.x * CM_TO_M, basin.size.height * CM_TO_M * 1.1, basin.position.y * CM_TO_M);
+  camera.position.copy(center).add(inspectionOffset(new Vector3(1.1, 1.0, -1.25).applyAxisAngle(new Vector3(0, 1, 0), -basin.rotation)));
+  orbit.target.copy(center); orbit.update();
+}
+function focusShower() {
+  const shower=Object.values(planStore.plan?.furniture??{}).find(f=>f.type==='shower');
+  if(!shower||!camera||!orbit)return;
+  setMode('orbit');
+  const center=new Vector3(shower.position.x*CM_TO_M,shower.size.height*CM_TO_M*.45,shower.position.y*CM_TO_M);
+  camera.position.copy(center).add(inspectionOffset(new Vector3(1.0,2.4,1.25).applyAxisAngle(new Vector3(0,1,0),-shower.rotation)));
+  orbit.target.copy(center);orbit.update();
+}
+function focusBedroom() {
+  const bed = Object.values(planStore.plan?.furniture ?? {}).find(f => f.type.startsWith('bed-'));
+  if (!bed || !camera || !orbit) return;
+  setMode('orbit');
+  const center = new Vector3(bed.position.x * CM_TO_M, 0.4, bed.position.y * CM_TO_M);
+  camera.position.copy(center).add(inspectionOffset(new Vector3(-1.7, 1.7, 2.1).applyAxisAngle(new Vector3(0, 1, 0), -bed.rotation)));
+  orbit.target.copy(center); orbit.update();
+}
+function focusKitchen() {
+  const sink = Object.values(planStore.plan?.furniture ?? {}).find(f => f.type === 'sink');
+  if (!sink || !camera || !orbit) return;
+  setMode('orbit');
+  const center = new Vector3(sink.position.x * CM_TO_M, 1.2, sink.position.y * CM_TO_M)
+    .add(new Vector3(0.45,0,0).applyAxisAngle(new Vector3(0,1,0),-sink.rotation));
+  camera.position.copy(center).add(inspectionOffset(new Vector3(-0.6, 1.1, -2.0).applyAxisAngle(new Vector3(0, 1, 0), -sink.rotation)));
+  orbit.target.copy(center); orbit.update();
+}
+function focusDining() {
+  const table=Object.values(planStore.plan?.furniture??{}).find(f=>f.type.startsWith('dining-table-'));
+  if(!table||!camera||!orbit)return;
+  setMode('orbit');
+  const center=new Vector3(table.position.x*CM_TO_M,(table.elevation??0)*CM_TO_M+table.size.height*CM_TO_M,table.position.y*CM_TO_M);
+  const scale=Math.max(1,table.size.width/140);
+  camera.position.copy(center).add(inspectionOffset(new Vector3(-1.55,1.25,1.7).multiplyScalar(scale).applyAxisAngle(new Vector3(0,1,0),-table.rotation)));
+  orbit.target.copy(center);orbit.update();
+}
+function focusRoom(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const views: Record<string, () => void> = { living: focusLivingRoom, bathroom: focusBathroom, shower: focusShower, bedroom: focusBedroom, kitchen: focusKitchen, dining: focusDining };
+  views[select.value]?.();
+  preserveInteriorBack = !!views[select.value];
+  updateLayers(false);
+  select.value = '';
+}
 function setMode(mode: 'orbit' | 'walk' | 'third' | 'edit') {
+  if(mode==='orbit'&&viewMode.value==='orbit'){resetView();return;}
+  invalidateFloorBake();
   targetHighlight.clear();activeLifeTarget.value=null;
   if (!camera || !controller || !orbit || !planStore.plan) return;
   const previousMode=viewMode.value;
@@ -441,6 +791,7 @@ function setMode(mode: 'orbit' | 'walk' | 'third' | 'edit') {
   const playerPosition=previousMode==='walk'?camera.position.clone():thirdPerson?.avatar.group.position.clone();
   const look=camera.getWorldDirection(new Vector3());
   viewMode.value = mode;
+  setInspectionLens(camera, mode === 'orbit' || mode === 'edit');
   sceneEditor?.setActive(mode==='edit');
   restoreOcclusion();
   controller.dispose();
@@ -461,17 +812,28 @@ function setMode(mode: 'orbit' | 'walk' | 'third' | 'edit') {
   updateLayers();
   if(mode==='third'||mode==='walk')resumePlay();
 }
-function updateLayers() {
+function updateLayers(invalidateContact=true) {
+  if(invalidateContact)invalidateFloorBake();
   restoreOcclusion();
   if (utilityGroup) utilityGroup.visible = utilityVisible.value;
   utilityGroup?.children.forEach(object=>{object.visible=utilityMatches(object.userData.utilityKind,utilityFilter.value);});
   const clip = (viewMode.value==='orbit'||viewMode.value==='third') && cutaway.value;
+  const directionalClip = clip && viewMode.value === 'orbit';
+  if(furnitureGroup)updateWallDecorationCutaway(furnitureGroup,inspectionCutaway,clip,directionalClip,preserveInteriorBack);
+  if (directionalClip && camera && orbit) inspectionCutaway.update(camera.position, orbit.target);
+  if(directionalClip)verticalWallCaps?.update(inspectionCutaway.planes[1], preserveInteriorBack);
   for (const group of [wallGroup, openingGroup]) group?.traverse(object => {
     const renderable = object as Mesh;
     if (!renderable.material) return;
+    if(renderable.userData.cutawayCap)renderable.visible=clip;
+    if(renderable.userData.verticalCap)renderable.visible=directionalClip;
     const materials = Array.isArray(renderable.material) ? renderable.material : [renderable.material];
     for (const material of materials) {
-      material.clippingPlanes = clip ? [new Plane(new Vector3(0, -1, 0), 1.05)] : null;
+      const preserveBack = directionalClip && (preserveInteriorBack || !material.userData.interiorPartition);
+      material.clippingPlanes = material.userData.cutawayCap
+        ? preserveBack && !material.userData.verticalCap ? inspectionCutaway.capPlanes : null
+        : preserveBack ? inspectionCutaway.planes : clip ? [new Plane(new Vector3(0, -1, 0), CUTAWAY_HEIGHT)] : null;
+      material.clipIntersection = preserveBack && !material.userData.cutawayCap;
       material.clipShadows = true;
       if (material instanceof MeshStandardMaterial) {
         if (material.userData.originalOpacity === undefined) material.userData.originalOpacity = material.opacity;
@@ -492,7 +854,7 @@ function focusWater(){
   for(const u of filteredUtilities.value)for(const p of u.points)bounds.expandByPoint(new Vector3(p.x/100,(p.height??u.height)/100,p.y/100));
   if(bounds.isEmpty())return;
   const center=bounds.getCenter(new Vector3()),size=bounds.getSize(new Vector3()),distance=Math.max(3,Math.max(size.x,size.z,size.y)*1.15)*Math.max(1,1/camera.aspect);
-  orbit.target.copy(center);camera.position.copy(center).add(new Vector3(-0.7,1.1,-0.85).multiplyScalar(distance));orbit.update();
+  orbit.target.copy(center);camera.position.copy(center).add(inspectionOffset(new Vector3(-0.7,1.1,-0.85).multiplyScalar(distance)));orbit.update();
 }
 function rebuildWater(){
   if(!planStore.plan)return;
@@ -504,9 +866,13 @@ function rebuildWater(){
 }
 function toggleNight() {
   night.value = !night.value;
-  if (sun) sun.intensity = night.value ? 0.1 : 2.5;
-  if (ambient) ambient.intensity = night.value ? 0.24 : 1.5;
-  if (scene) scene.background = new Color(night.value ? '#172430' : '#e7ecee');
+  const look=night.value?NIGHT_LOOK:DAYLIGHT_LOOK;
+  if (sun) sun.intensity = look.sunIntensity;
+  if (ambient) ambient.intensity = look.fillIntensity;
+  if (renderer) renderer.toneMappingExposure=look.exposure;
+  if (scene) scene.background = new Color(look.background);
+  if (scene) scene.environment = night.value ? null : environmentTexture;
+  exteriorBackdrop?.setNight(night.value);
 }
 
 function selectEdited(selection:SelectionTarget|null){editSelection.value=selection;if(selection)editorStore.select(selection);else editorStore.clearSelection();sceneEditor?.select(selection);}
@@ -541,10 +907,17 @@ function performLifeAction(target:LifeTarget){
     lifeStatus.value=target.action==='sit'?'已坐下；按方向键起身继续走动。':'正在躺下休息；按方向键起身。';return;
   }
   if(target.action==='light'){
-    if(f.type==='switch'){const on=allLights.some(l=>l.intensity>0);allLights.forEach(l=>l.intensity=on?0:1);}else{const light=lightsByFurnitureId[f.id];if(light)toggleLight(light);}
-    lifeStatus.value='已切换灯光';return;
+    if(f.type==='switch'){const on=allLights.some(l=>l.intensity>0);allLights.forEach(l=>setLightEnabled(l,!on));}else{const light=lightsByFurnitureId[f.id];if(light)toggleLight(light);}
+    syncLampSurfaces();lifeStatus.value='已切换灯光';return;
   }
-  lifeStatus.value=useObject(g,f);
+  invalidateFloorBake();
+  lifeStatus.value=useObject(g,f,message=>{lifeStatus.value=message;});
+}
+function syncLampSurfaces(){
+  for(const item of furnitureGroup?.children??[]){
+    const light=lightsByFurnitureId[item.userData.furnitureId];
+    if(light)item.userData.setLightOn?.(light.intensity>0);
+  }
 }
 function setEditTool(tool:SceneEditTool,kind?:UtilityKind){editTool.value=tool;sceneEditor?.setTool(tool,kind);}
 function addToScene(type:FurnitureType){
@@ -554,21 +927,35 @@ function addToScene(type:FurnitureType){
 }
 function disposeGroup(group:Group|null){
   targetHighlight.clear();
-  if(!group||!scene)return;scene.remove(group);const disposed=new Set<unknown>();
-  group.traverse(o=>{const m=o as Mesh;if(m.geometry&&!disposed.has(m.geometry)){m.geometry.dispose();disposed.add(m.geometry);}const materials=m.material?(Array.isArray(m.material)?m.material:[m.material]):[];
+  if(!group||!scene)return;group.removeFromParent();const disposed=new Set<unknown>();
+  group.traverse(o=>{if(o instanceof InstancedMesh)o.dispose();const m=o as Mesh;if(m.geometry&&!disposed.has(m.geometry)){m.geometry.dispose();disposed.add(m.geometry);}const materials=m.material?(Array.isArray(m.material)?m.material:[m.material]):[];
     for(const mat of materials)if(!disposed.has(mat)){for(const value of Object.values(mat))if(value instanceof Texture&&!disposed.has(value)){value.dispose();disposed.add(value);}mat.dispose();disposed.add(mat);}});
 }
-watch(()=>planStore.plan,()=>{
+watch(()=>planStore.plan,(_next,previous)=>{
+  invalidateFloorBake();
   if(!scene||!planStore.plan||!furnitureGroup)return;
   restoreOcclusion();sceneEditor?.transform.detach();
-  for(const group of [floorGroup,furnitureGroup,utilityGroup,roomLightsGroup])disposeGroup(group);
   const p=planStore.plan;
-  floorGroup=buildFloor(p);furnitureGroup=buildFurniture(p);utilityGroup=buildUtilities(p);
-  const lights=buildRoomLights(p);roomLightsGroup=lights.group;lightsByFurnitureId=lights.lightsByFurnitureId;allLights=Object.values(lightsByFurnitureId);
-  scene.add(floorGroup,furnitureGroup,utilityGroup,roomLightsGroup);
+  if(previous)reconcileFurniture(furnitureGroup,previous,p,disposeGroup);
+  else {disposeGroup(furnitureGroup);furnitureGroup=buildFurniture(p);scene.add(furnitureGroup);}
+  if(!previous||previous.rooms!==p.rooms||previous.renovation?.finish!==p.renovation?.finish||previous.renovation?.roomFloors!==p.renovation?.roomFloors){
+    disposeGroup(floorGroup);floorGroup=buildFloor(p);scene.add(floorGroup);
+  }
+  if(!previous||previous.renovation?.utilities!==p.renovation?.utilities){
+    disposeGroup(utilityGroup);utilityGroup=buildUtilities(p);scene.add(utilityGroup);
+  }
+  const lamps=Object.values(p.furniture).filter(f=>FURNITURE_CATALOG[f.type]?.interactive==='light');
+  const oldLamps=Object.values(previous?.furniture??{}).filter(f=>FURNITURE_CATALOG[f.type]?.interactive==='light');
+  if(!previous||previous.meta.defaultWallHeight!==p.meta.defaultWallHeight||lamps.length!==oldLamps.length||lamps.some(f=>previous.furniture[f.id]!==f)){
+    disposeGroup(roomLightsGroup);
+    const lights=buildRoomLights(p);roomLightsGroup=lights.group;lightsByFurnitureId=lights.lightsByFurnitureId;allLights=Object.values(lightsByFurnitureId);scene.add(roomLightsGroup);
+  }
   wallGroup?.traverse(o=>{if(o instanceof Mesh&&o.material instanceof MeshStandardMaterial)o.material.color.set(p.renovation?.finish.wallColor??'#f5f0e8');});
-  controller?.setObstacles(buildCollider(p));thirdPerson?.setObstacles(buildCollider(p));
-  sceneEditor?.refresh();updateLayers();
+  staticObstacles=buildCollider(p);
+  const obstacles=[...staticObstacles,...runtimeColliders(furnitureGroup,doorPivots,personHeight.value)];
+  controller?.setObstacles(obstacles);thirdPerson?.setObstacles(obstacles);
+  syncLampSurfaces();sceneEditor?.refresh();updateLayers();
+  if(sun)fitSunShadow(sun,[wallGroup,floorGroup,furnitureGroup,openingGroup].filter((g):g is Group=>!!g),renderer?.capabilities.isWebGL2??false);
 },{flush:'post'});
 watch(()=>editorStore.selection,()=>{if(viewMode.value==='edit'){editSelection.value=editorStore.selection[0]??null;sceneEditor?.select(editSelection.value);}});
 watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisible.value=editorStore.showUtilities;updateLayers();}});
@@ -577,6 +964,9 @@ watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisi
 <template>
   <div class="h-full relative bg-black text-white overflow-hidden">
     <canvas ref="canvasRef" class="absolute inset-0 w-full h-full" @click="(viewMode==='third'||viewMode==='walk')&&resumePlay()" />
+    <div v-if="preparingMaterials" role="status" class="absolute inset-0 z-10 flex items-center justify-center bg-black/30 pointer-events-none">
+      <div class="rounded bg-black/75 px-5 py-3 text-sm">正在准备材质与阴影… {{ preparationProgress }} 首次进入此渲染模式可能稍慢</div>
+    </div>
 
     <div
       v-if="!pointerLocked && !pointerLockPending && (viewMode === 'walk'||viewMode==='third')"
@@ -599,6 +989,18 @@ watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisi
       </button>
       <div class="view-actions">
         <button :class="{ active: viewMode === 'orbit' }" @click="setMode('orbit')">俯瞰</button>
+        <button :class="{ active: detailedShadows }" @click="detailedShadows = !detailedShadows">精细阴影</button>
+        <select v-model="renderResolution" aria-label="渲染清晰度" title="均衡模式限制为约240万渲染像素；原像素最高2倍屏幕像素比，GPU开销更高" @change="onResize">
+          <option value="balanced">清晰度：均衡</option>
+          <option value="native">清晰度：原像素</option>
+        </select>
+        <button v-if="viewMode==='orbit'" :disabled="utilityVisible" title="后台计算地板与墙面静态接触阴影；修改场景后需重新计算，水电透视时不可用" :class="{active:floorBakeState==='ready'}" @click="toggleFloorBake" :aria-pressed="floorBakeState==='ready'">{{floorBakeState==='busy'?'取消接触阴影计算':floorBakeState==='ready'?'关闭房间接触阴影':floorBakeState==='error'?'重试房间接触阴影':'计算房间接触阴影'}}</button>
+        <select aria-label="房间特写" @change="focusRoom">
+          <option value="">房间特写</option>
+          <option value="living">客厅</option><option value="bedroom">卧室</option>
+          <option value="bathroom">卫浴</option><option value="shower">淋浴</option><option value="kitchen">厨房</option>
+          <option value="dining">餐厅</option>
+        </select>
         <button :class="{ active: viewMode === 'third' }" @click="setMode('third')">第三人称</button>
         <button :class="{ active: viewMode === 'edit' }" @click="setMode('edit')">装修模式</button>
         <button :class="{ active: viewMode === 'walk' }" @click="setMode('walk')">第一人称</button>
@@ -612,9 +1014,21 @@ watch(()=>editorStore.showUtilities,()=>{if(viewMode.value==='edit'){utilityVisi
         <button class="px-2 py-1 bg-white/10 rounded hover:bg-white/20" @click="changeHeight(-5)">−</button>
         <span>身高 {{ personHeight }}cm</span>
         <button class="px-2 py-1 bg-white/10 rounded hover:bg-white/20" @click="changeHeight(5)">+</button>
-        <span class="ml-4 text-gray-400">{{ fpsCounter }} fps</span>
+        <button class="ml-4 text-gray-300" aria-label="渲染诊断" :aria-expanded="graphicsPanel" title="查看实际渲染设备与绘制分辨率" @click="toggleGraphicsPanel">{{ idleFrame ? '静止 · 已缓存' : `${fpsCounter} fps` }}</button>
       </div>
     </div>
+    <section v-if="graphicsPanel" role="region" aria-label="渲染诊断" class="absolute top-16 right-3 z-20 max-w-sm rounded bg-slate-900/95 p-4 text-xs text-white shadow-lg">
+      <div class="flex justify-between gap-4"><strong>渲染诊断</strong><button aria-label="关闭渲染诊断" @click="graphicsPanel=false">关闭</button></div>
+      <template v-if="graphicsInfo">
+        <p class="mt-3 break-words">设备：{{graphicsInfo.renderer}}</p>
+        <p class="mt-2">实际绘制：{{graphicsInfo.width}} × {{graphicsInfo.height}} 像素</p>
+        <p v-if="!graphicsInfo.unmasked&&!graphicsInfo.lost" class="mt-2">浏览器未公开完整显卡名称，无法据此确认独显或核显。</p>
+        <p v-if="graphicsInfo.software" class="mt-2 text-amber-200">检测到软件渲染，请检查浏览器硬件加速是否可用。</p>
+        <p class="mt-2 text-slate-300">这里显示浏览器实际选择的设备，不代表电脑的全部显卡。静止缓存不等于移动时流畅；当前 FPS 也不是 GPU 耗时。</p>
+      </template>
+      <p v-else class="mt-3">场景尚未准备完成。</p>
+      <button class="mt-3 underline" @click="refreshGraphicsInfo">刷新设备信息</button>
+    </section>
     <SceneEditorPanel v-if="viewMode==='edit'" :selected="editSelection" :step="editStep" :tool="editTool" :notice="editNotice"
       @select="selectEdited" @add="addToScene" @tool="setEditTool" @step="editStep=$event;sceneEditor?.setStep($event)" @finish="sceneEditor?.finishRoute()" />
     <aside v-if="utilityVisible" class="utility-inspector">

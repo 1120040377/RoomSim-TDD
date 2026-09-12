@@ -7,6 +7,20 @@ import { buildCollider } from '@/modules/walkthrough/collision-builder';
 import { circleVsOrientedBox } from '@/modules/geometry/collision';
 
 describe('第三人称跟随', () => {
+  it('idle camera transforms stay bit-identical away from the world origin',()=>{
+    for(const [x,y,yaw] of [[130,680,Math.PI/2],[365.4,680,Math.PI/2],[120,455,.713]]){
+      const camera=new PerspectiveCamera(70,1.5,.02,100),control=new ThirdPerson(camera,document.createElement('canvas'),[]);
+      control.setPosition({x,y});control.avatar.group.rotation.y=yaw;control.attach();
+      try{
+        const position=camera.position.toArray(),quaternion=camera.quaternion.toArray();
+        for(let i=0;i<120;i++){
+          control.update(1/60);
+          expect(camera.position.toArray()).toEqual(position);
+          expect(camera.quaternion.toArray()).toEqual(quaternion);
+        }
+      }finally{control.dispose();}
+    }
+  });
   it('仅锁定鼠标时接收相对转向与移动，释放后立即停止输入',()=>{
     const camera=new PerspectiveCamera(70,16/9,0.02,100),canvas=document.createElement('canvas');
     const control=new ThirdPerson(camera,canvas,[]);control.attach();

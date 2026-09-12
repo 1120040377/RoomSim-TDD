@@ -24,6 +24,13 @@ export interface FurnitureDef {
 }
 
 export const FURNITURE_CATALOG: Record<FurnitureType, FurnitureDef> = {
+  'wall-mirror': { name: '椭圆金属框镜（环境反射）', size: { width: 60, depth: 3, height: 80 }, mountPoint: 'wall', wallAligned: true, category: 'bathroom', defaultColor: '#a28b61' },
+  'kitchen-island': { name: '石材瀑布边岛台', size: { width: 180, depth: 85, height: 90 }, category: 'kitchen', defaultColor: '#aab19e' },
+  'counter-stool': { name: '橡木高脚凳', size: { width: 42, depth: 42, height: 65 }, category: 'kitchen', defaultColor: '#b59670' },
+  'botanical-vase': { name: '陶瓷枝叶花瓶', size: { width: 26, depth: 26, height: 35 }, category: 'dining', defaultColor: '#d6ccba' },
+  'railing': { name: '金属栏杆', size: { width: 200, depth: 4, height: 105 }, category: 'livingroom', defaultColor: '#304f49' },
+  'rug': { name: '编织地毯', size: { width: 240, depth: 170, height: 1 }, category: 'livingroom', defaultColor: '#bcaa88' },
+  'floor-plant': { name: '阔叶盆栽', size: { width: 75, depth: 75, height: 145 }, category: 'livingroom', defaultColor: '#b7a58d' },
   'wall-cabinet': { name: '壁挂吊柜', size: { width: 80, depth: 32, height: 65 }, mountPoint: 'wall', wallAligned: true, category: 'kitchen' },
   'washing-machine': { name: '洗衣机', size: { width: 60, depth: 60, height: 85 }, category: 'bathroom' },
   // 卧室
@@ -50,6 +57,9 @@ export const FURNITURE_CATALOG: Record<FurnitureType, FurnitureDef> = {
   'dining-chair': { name: '餐椅', size: { width: 45, depth: 50, height: 90 }, category: 'dining' },
   fridge: { name: '冰箱', size: { width: 75, depth: 70, height: 180 }, wallAligned: true, category: 'kitchen' },
   stove: { name: '灶台', size: { width: 70, depth: 60, height: 90 }, wallAligned: true, category: 'kitchen' },
+  'wall-art': { name: '木框山景画', size: { width: 90, depth: 3, height: 60 }, mountPoint: 'wall', wallAligned: true, category: 'livingroom', defaultColor: '#ba9b73' },
+  'kitchen-accessories': { name: '台面用品组', size: { width: 55, depth: 30, height: 28 }, category: 'kitchen', defaultColor: '#d8d3c3' },
+  'range-hood': { name: '抽油烟机', size: { width: 70, depth: 48, height: 80 }, mountPoint: 'wall', wallAligned: true, category: 'kitchen', defaultColor: '#8b928d' },
   sink: { name: '水槽', size: { width: 80, depth: 60, height: 90 }, wallAligned: true, category: 'kitchen' },
   'kitchen-counter': { name: '橱柜', size: { width: 100, depth: 60, height: 90 }, wallAligned: true, category: 'kitchen' },
 
@@ -64,6 +74,7 @@ export const FURNITURE_CATALOG: Record<FurnitureType, FurnitureDef> = {
   'office-chair': { name: '办公椅', size: { width: 60, depth: 60, height: 90 }, category: 'office' },
 
   // 灯光/控制
+  'lamp-table': { name: '陶瓷布罩台灯', size: { width: 32, depth: 32, height: 45 }, interactive: 'light', category: 'lighting' },
   'lamp-ceiling': { name: '吊灯', size: { width: 50, depth: 50, height: 50 }, mountPoint: 'ceiling', interactive: 'light', category: 'lighting' },
   'lamp-floor': { name: '落地灯', size: { width: 40, depth: 40, height: 160 }, interactive: 'light', category: 'lighting' },
   'lamp-wall': { name: '壁灯', size: { width: 20, depth: 15, height: 30 }, wallAligned: true, mountPoint: 'wall', interactive: 'light', category: 'lighting' },

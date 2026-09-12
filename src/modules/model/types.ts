@@ -90,14 +90,25 @@ export type FurnitureType =
   | 'office-chair'
   | 'fridge'
   | 'stove'
+  | 'range-hood'
+  | 'wall-art'
+  | 'wall-mirror'
+  | 'botanical-vase'
+  | 'kitchen-accessories'
   | 'sink'
   | 'kitchen-counter'
+  | 'kitchen-island'
+  | 'counter-stool'
   | 'toilet'
   | 'basin'
   | 'shower'
   | 'bathtub'
   | 'lamp-ceiling'
   | 'lamp-floor'
+  | 'lamp-table'
+  | 'floor-plant'
+  | 'rug'
+  | 'railing'
   | 'lamp-wall'
   | 'switch'
   | 'person-standing'
@@ -194,6 +205,7 @@ export interface UtilityPoint extends Vec2 { height?: Cm }
 export interface Renovation {
   utilities: Record<string, Utility>;
   finish: Finish;
+  roomFloors?: Record<string, Pick<Finish, 'floor' | 'floorColor'>>;
 }
 
 /* ------------------------------ Helpers ----------------------------- */

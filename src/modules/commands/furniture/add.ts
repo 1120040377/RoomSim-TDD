@@ -29,6 +29,12 @@ export class AddFurnitureCommand implements Command {
       wallAligned: def.wallAligned,
       mount: def.mountPoint,
       ...(opts.type==='wall-cabinet'?{elevation:150}:{}),
+      ...(opts.type==='range-hood'?{elevation:155}:{}),
+      ...(opts.type==='wall-art'?{elevation:140}:{}),
+      ...(opts.type==='wall-mirror'?{elevation:115}:{}),
+      ...(opts.type==='kitchen-accessories'?{elevation:90}:{}),
+      ...(opts.type==='lamp-table'?{elevation:50}:{}),
+      ...(opts.type==='botanical-vase'?{elevation:75}:{}),
     };
   }
 

@@ -145,15 +145,23 @@ export const usePlanStore = defineStore('plan', () => {
 
     // 旧房间 wallIds 集合 → name 映射，用于尝试保留命名
     const nameByKey: Record<string, string> = {};
+    const idByKey: Record<string, string> = {};
+    const reservedIds = new Set([...Object.keys(p.rooms), ...Object.keys(p.renovation?.roomFloors ?? {})]);
     for (const r of Object.values(p.rooms)) {
       nameByKey[[...r.wallIds].sort().join('|')] = r.name;
+      idByKey[[...r.wallIds].sort().join('|')] = r.id;
     }
 
     const newRooms: Record<RoomId, Room> = {};
     let idx = 1;
     for (const f of faces) {
-      const id = `room-${idx++}`;
       const key = [...f.wallIds].sort().join('|');
+      let id = idByKey[key];
+      if (!id) {
+        while (reservedIds.has(`room-${idx}`)) idx++;
+        id = `room-${idx++}`;
+        reservedIds.add(id);
+      }
       newRooms[id] = {
         id,
         name: nameByKey[key] ?? `房间 ${idx - 1}`,

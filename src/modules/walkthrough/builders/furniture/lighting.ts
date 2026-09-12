@@ -2,8 +2,10 @@ import {
   BoxGeometry,
   Color,
   CylinderGeometry,
+  LatheGeometry,
+  Vector2,
   Group,
-  IcosahedronGeometry,
+  DoubleSide,
   Mesh,
   MeshStandardMaterial,
   SphereGeometry,
@@ -11,6 +13,7 @@ import {
 } from 'three';
 import type { Furniture } from '@/modules/model/types';
 import { CM_TO_M } from '../../coord';
+import { fabricMaterial, metalMaterial } from './material-library';
 
 const CORD_LENGTH_CM = 30;
 
@@ -39,11 +42,12 @@ export function buildLampCeiling(g: Group, f: Furniture, ceilingHeightCm: number
   const shadeMat = new MeshStandardMaterial({
     color: baseColor,
     emissive: baseColor,
-    emissiveIntensity: 0.9,
-    roughness: 0.3,
-    metalness: 0.1,
+    emissiveIntensity: 0.12,
+    roughness: 0.76,
+    metalness: 0,
+    side: DoubleSide,
   });
-  const shadeGeom = new IcosahedronGeometry(shadeRadius, 0);
+  const shadeGeom = new CylinderGeometry(shadeRadius * 0.56, shadeRadius, shadeRadius * 1.2, 40, 1, true);
   const shade = new Mesh(shadeGeom, shadeMat);
   shade.position.y = ceilingY - cordLen - shadeRadius;
   shade.castShadow = false;
@@ -67,35 +71,47 @@ export function buildLampCeiling(g: Group, f: Furniture, ceilingHeightCm: number
 export function buildLampFloor(g: Group, f: Furniture, _ceilingHeightCm: number): void {
   const H = f.size.height * CM_TO_M;   // 1.60
 
-  const matMetal  = new MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.4, metalness: 0.6 });
-  const matShade  = new MeshStandardMaterial({ color: 0xe8d5b0, roughness: 0.7 });
+  const radius=Math.min(f.size.width,f.size.depth)*CM_TO_M/2;
+  const matMetal=metalMaterial('#665b4b',0.48);
+  const matShade=fabricMaterial(f.color??'#e8dcc5',81);
+  matShade.side=DoubleSide;matShade.emissive.set('#ffd393');
 
   // 底座
-  const baseMesh = new Mesh(new CylinderGeometry(0.18, 0.18, 0.06, 20), matMetal);
-  baseMesh.position.y = 0.03;
+  const baseMesh = new Mesh(new CylinderGeometry(radius*.68, radius*.72, 0.025, 32), matMetal);
+  baseMesh.position.y = 0.0125;
   g.add(baseMesh);
 
   // 灯杆
-  const poleH = H * 0.84;
-  const poleMesh = new Mesh(new CylinderGeometry(0.02, 0.02, poleH, 10), matMetal);
-  poleMesh.position.y = 0.06 + poleH / 2;
+  const poleH = H * 0.89 - 0.025;
+  const poleMesh = new Mesh(new CylinderGeometry(0.009, 0.011, poleH, 12), matMetal);
+  poleMesh.position.y = 0.025 + poleH / 2;
   g.add(poleMesh);
 
-  // 灯罩（上窄下宽圆台）
-  const shadeH = H * 0.14;
-  const shadeY = 0.06 + poleH + shadeH / 2;
-  const shadeMesh = new Mesh(new CylinderGeometry(0.08, 0.18, shadeH, 20), matShade);
-  shadeMesh.position.y = shadeY;
+  // Open linen shell with narrow turned edges, not a capped solid cone.
+  const shadeH = H * 0.20;
+  const shadeGeometry=new LatheGeometry([
+    new Vector2(radius,H-shadeH),new Vector2(radius*.985,H-shadeH+.004),
+    new Vector2(radius*.62,H-.004),new Vector2(radius*.61,H),
+  ],40);
+  const uv=shadeGeometry.getAttribute('uv');
+  for(let i=0;i<uv.count;i++)uv.setXY(i,uv.getX(i)*2*Math.PI*radius,uv.getY(i)*shadeH);
+  const shadeMesh = new Mesh(shadeGeometry, matShade);
+  shadeMesh.name='floor-lamp-shade';shadeMesh.receiveShadow=true;
   g.add(shadeMesh);
 
   // 灯泡
   const baseColor = new Color(f.color ?? '#fff4d0');
   const bulb = new Mesh(
-    new SphereGeometry(0.06, 10, 10),
+    new SphereGeometry(radius*.22, 12, 8),
     new MeshStandardMaterial({ color: 0xffffff, emissive: baseColor, emissiveIntensity: 1.5 }),
   );
-  bulb.position.y = shadeY - shadeH * 0.2;
+  bulb.position.y = H * 0.89;
   g.add(bulb);
+  g.userData.setLightOn=(on:boolean)=>{
+    matShade.emissiveIntensity=on?0.22:0;
+    (bulb.material as MeshStandardMaterial).emissiveIntensity=on?1.5:0;
+  };
+  g.userData.setLightOn(f.runtimeState?.on!==false);
 }
 
 // ─── 壁灯 ──────────────────────────────────────────────────────────────────────

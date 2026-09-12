@@ -111,6 +111,10 @@ export const PlanSchema = z.object({
       floorColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
       wallColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
     }),
+    roomFloors: z.record(z.string(), z.object({
+      floor: z.enum(['wood', 'tile', 'concrete']),
+      floorColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+    })).optional(),
   }).optional(),
 });
 

@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { usePlanStore } from '@/modules/store/plan';
 import { useEditorStore } from '@/modules/store/editor';
 import { useHistoryStore } from '@/modules/store/history';
 import type { Finish, Utility, UtilityKind } from '@/modules/model/types';
 import { defaultRenovation, routeLength, UTILITY_CATALOG } from '@/modules/renovation/model';
-import { putUtility, removeUtility, updateFinish } from '@/modules/commands/renovation';
+import { putUtility, removeUtility, updateFinish, updateRoomFloor } from '@/modules/commands/renovation';
 const plan = usePlanStore();
 const editor = useEditorStore();
 const history = useHistoryStore();
 const renovation = computed(() => plan.plan?.renovation ?? defaultRenovation());
+const floorRoom = ref('');
+const currentFloor = computed(() => renovation.value.roomFloors?.[floorRoom.value] ?? renovation.value.finish);
 const utilities = computed(() => Object.values(renovation.value.utilities));
 const selected = computed(() => {
   const s = editor.selection[0];
@@ -34,7 +36,10 @@ function numeric(field: 'height' | 'rotation', event: Event) {
   if (!Number.isFinite(value) || (field === 'height' && (value < 0 || value > 500))) return;
   edit({ [field]: field === 'rotation' ? value * Math.PI / 180 : value });
 }
-function finish(patch: Partial<Finish>) { history.execute(updateFinish(patch)); }
+function finish(patch: Partial<Finish>) {
+  if (floorRoom.value && plan.plan?.rooms[floorRoom.value]) history.execute(updateRoomFloor(floorRoom.value, patch));
+  else history.execute(updateFinish(patch));
+}
 function remove() {
   if (selected.value) history.execute(removeUtility(selected.value.id));
   editor.clearSelection();
@@ -82,14 +87,19 @@ function remove() {
       <h2>装修材质 <span>全屋</span></h2>
       <p class="muted">材质同步到 3D，可撤销并随方案保存。</p>
       <h3>地面铺装</h3>
+      <label>应用范围<select v-model="floorRoom" aria-label="地面应用范围">
+        <option value="">全屋默认（房间覆盖优先）</option>
+        <option v-for="room in plan.plan?.rooms" :key="room.id" :value="room.id">{{ room.name }}</option>
+      </select></label>
+      <button v-if="floorRoom && renovation.roomFloors?.[floorRoom]" @click="history.execute(updateRoomFloor(floorRoom, null))">恢复全屋默认</button>
       <div class="finish-choices">
         <button v-for="f in ([{ id: 'wood', name: '温润木地板' }, { id: 'tile', name: '现代瓷砖' }, { id: 'concrete', name: '素色水泥' }] as const)"
-          :key="f.id" :class="{ active: renovation.finish.floor === f.id }" @click="finish({ floor: f.id })">
-          <div class="swatch" :class="f.id" :style="{ backgroundColor: renovation.finish.floorColor }" />{{ f.name }}
+          :key="f.id" :class="{ active: currentFloor.floor === f.id }" @click="finish({ floor: f.id })">
+          <div class="swatch" :class="f.id" :style="{ backgroundColor: currentFloor.floorColor }" />{{ f.name }}
         </button>
       </div>
-      <label class="color-label">地面颜色<input aria-label="地面颜色" type="color" :value="renovation.finish.floorColor" @change="finish({ floorColor: ($event.target as HTMLInputElement).value })" /></label>
-      <label class="color-label">墙面颜色<input aria-label="墙面颜色" type="color" :value="renovation.finish.wallColor" @change="finish({ wallColor: ($event.target as HTMLInputElement).value })" /></label>
+      <label class="color-label">地面颜色<input aria-label="地面颜色" type="color" :value="currentFloor.floorColor" @change="finish({ floorColor: ($event.target as HTMLInputElement).value })" /></label>
+      <label class="color-label">墙面颜色（全屋）<input aria-label="墙面颜色" type="color" :value="renovation.finish.wallColor" @change="history.execute(updateFinish({ wallColor: ($event.target as HTMLInputElement).value }))" /></label>
       <h3>搭配预设</h3>
       <div class="choices">
         <button @click="finish({ floor: 'wood', floorColor: '#d6bc94', wallColor: '#f5f0e8' })">原木暖白</button>

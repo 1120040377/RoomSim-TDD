@@ -1,34 +1,17 @@
-import {
-  BoxGeometry,
-  CylinderGeometry,
-  EdgesGeometry,
-  Group,
-  LineBasicMaterial,
-  LineSegments,
-  Mesh,
-  MeshStandardMaterial,
-} from 'three';
+import { CylinderGeometry, Group, Mesh, MeshStandardMaterial } from 'three';
 import type { Furniture } from '@/modules/model/types';
 import { CM_TO_M } from '../../coord';
+import { fabricMaterial, metalMaterial, woodMaterial } from './material-library';
+import { addRoundedBox } from './primitives';
 
 function makeBox(
   w: number, h: number, d: number,
   mat: MeshStandardMaterial,
   x: number, y: number, z: number,
   g: Group,
-  edge = false,
+  _edge = false,
 ): void {
-  const geom = new BoxGeometry(w, h, d);
-  const mesh = new Mesh(geom, mat);
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  g.add(mesh);
-  if (edge) {
-    const ln = new LineSegments(new EdgesGeometry(geom), new LineBasicMaterial({ color: 0x525252 }));
-    ln.position.copy(mesh.position);
-    g.add(ln);
-  }
+  addRoundedBox(g, w, h, d, mat, x, y, z);
 }
 
 // ─── 书桌 ──────────────────────────────────────────────────────────────────────
@@ -38,8 +21,8 @@ export function buildDesk(g: Group, f: Furniture, _ceilingHeightCm: number): voi
   const D = f.size.depth * CM_TO_M;
   const H = f.size.height * CM_TO_M;
 
-  const matTop = new MeshStandardMaterial({ color: 0xc4a265, roughness: 0.5 });
-  const matLeg = new MeshStandardMaterial({ color: 0x5c3d1e, roughness: 0.7 });
+  const matTop = woodMaterial('#b28c62', 20);
+  const matLeg = woodMaterial('#4c3729', 21);
 
   const topH = 0.04;
   makeBox(W, topH, D, matTop, 0, H - topH / 2, 0, g, true);
@@ -60,9 +43,9 @@ export function buildOfficeChair(g: Group, f: Furniture, _ceilingHeightCm: numbe
   const H = f.size.height * CM_TO_M;
   const D = f.size.depth * CM_TO_M;
 
-  const matBase = new MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.6 });
-  const matPole = new MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.4, metalness: 0.5 });
-  const matSeat = new MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.8 });
+  const matBase = metalMaterial('#222725', 0.42);
+  const matPole = metalMaterial('#3d4541', 0.28);
+  const matSeat = fabricMaterial('#55635c', 22);
 
   // 底盘（扁圆柱）
   const baseMesh = new Mesh(new CylinderGeometry(W * 0.42, W * 0.42, 0.05, 24), matBase);

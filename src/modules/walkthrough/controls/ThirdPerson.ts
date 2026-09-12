@@ -14,6 +14,8 @@ export class ThirdPerson {
   private cleanup: Array<() => void> = [];
   private resting=false;
   private returnPosition=new Vector3();
+  private followTarget=new Vector3();
+  private desiredTarget=new Vector3();
   constructor(private camera: PerspectiveCamera, private element: HTMLElement, private obstacles: OrientedBox[]) {}
 
   attach() {
@@ -91,6 +93,7 @@ export class ThirdPerson {
   resetCamera() {
     if (!this.controls) return;
     this.controls.target.copy(this.avatar.group.position).add(new Vector3(0, this.height * 0.0082, 0));
+    this.followTarget.copy(this.controls.target);
     const distance = Math.max(0.9,this.height/170*1.15);
     const behind=new Vector3(0,0.12,1).normalize().applyAxisAngle(new Vector3(0,1,0),this.avatar.group.rotation.y);
     this.camera.position.copy(this.controls.target).addScaledVector(behind,distance);
@@ -99,7 +102,7 @@ export class ThirdPerson {
   update(dt: number) {
     if (!this.controls) return;
     if(document.pointerLockElement!==this.element)this.keys.clear();
-    if(this.resting){if(this.keys.size){this.stand();}else{this.controls.target.copy(this.avatar.group.position).add(new Vector3(0,this.height*0.0082,0));this.controls.update();return;}}
+    if(this.resting){if(this.keys.size){this.stand();}else{this.updateFollowTarget();return;}}
     const forward = this.controls.target.clone().sub(this.camera.position).setY(0).normalize();
     const right = new Vector3(-forward.z, 0, forward.x);
     const z = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp')) - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown'));
@@ -120,7 +123,19 @@ export class ThirdPerson {
       this.phase += delta.length() * 9;
     }
     this.avatar.animate(this.phase, moving);
-    this.controls.target.copy(position).add(new Vector3(0, this.height * 0.0082, 0));
-    this.controls.update();
+    this.updateFollowTarget();
+  }
+  private updateFollowTarget() {
+    if(!this.controls)return;
+    this.desiredTarget.copy(this.avatar.group.position);this.desiredTarget.y+=this.height*.0082;
+    // Rotation/zoom handlers and resetCamera update explicitly. Orbit's built-in
+    // rotate, zoom and pan are disabled, so there is no idle damping to advance.
+    // Repeating spherical conversion here otherwise introduces sub-ULP drift
+    // that invalidates the entire rendered-frame cache while standing still.
+    // Compare our last request, not OrbitControls' mutable target: its radius
+    // clamp itself can round the target on every update.
+    if(this.followTarget.equals(this.desiredTarget))return;
+    this.followTarget.copy(this.desiredTarget);
+    this.controls.target.copy(this.followTarget);this.controls.update();
   }
 }

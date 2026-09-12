@@ -50,6 +50,7 @@ export const DoorSwingRule: Rule = {
       };
 
       for (const f of Object.values(plan.furniture)) {
+        if (f.type === 'rug') continue;
         const corners = furnitureCorners(f);
         let hit = false;
         for (const c of corners) {

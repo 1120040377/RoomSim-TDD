@@ -41,6 +41,9 @@ importers:
       three:
         specifier: ^0.160.0
         version: 0.160.1
+      three-mesh-bvh:
+        specifier: 0.8.0
+        version: 0.8.0(three@0.160.1)
       vue:
         specifier: ^3.4.0
         version: 3.5.33(typescript@5.9.3)
@@ -1667,6 +1670,11 @@ packages:
         optional: true
       react:
         optional: true
+
+  three-mesh-bvh@0.8.0:
+    resolution: {integrity: sha512-Q3Rx3Ja2d/sqNW965wcoqr9NbRGbolk8jrKvSVu1zO5+Vv15vwLfwiTes+jssrd1Odq2+HQhq99Nknwp0JfISg==}
+    peerDependencies:
+      three: '>= 0.158.0'
 
   three-stdlib@2.36.1:
     resolution: {integrity: sha512-XyGQrFmNQ5O/IoKm556ftwKsBg11TIb301MB5dWNicziQBEs2g3gtOYIf7pFiLa0zI2gUwhtCjv9fmjnxKZ1Cg==}
@@ -3560,6 +3568,10 @@ snapshots:
       glsl-token-string: 1.0.1
       glsl-tokenizer: 2.1.5
       object-hash: 3.0.0
+      three: 0.160.1
+
+  three-mesh-bvh@0.8.0(three@0.160.1):
+    dependencies:
       three: 0.160.1
 
   three-stdlib@2.36.1(three@0.160.1):

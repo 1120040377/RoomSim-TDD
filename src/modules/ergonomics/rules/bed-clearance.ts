@@ -17,7 +17,7 @@ export const BedClearanceRule: Rule = {
       for (const other of fs) {
         if (other.id === bed.id) continue;
         // 床头柜允许紧贴
-        if (other.type === 'side-table') continue;
+        if (other.type === 'side-table' || other.type === 'rug') continue;
         const d = furnitureDistance(bed, other);
         if (d > 0 && d < MIN) {
           warnings.push({

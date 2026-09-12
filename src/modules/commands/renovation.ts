@@ -28,3 +28,15 @@ export function removeUtility(id: string) {
 export function updateFinish(patch: Partial<Finish>) {
   return new RenovationCommand('更换装修材质', r => ({ ...r, finish: { ...r.finish, ...patch } }));
 }
+
+export function updateRoomFloor(roomId: string, patch: Partial<Pick<Finish, 'floor' | 'floorColor'>> | null) {
+  return new RenovationCommand('更换房间地面', r => {
+    const roomFloors = { ...r.roomFloors };
+    if (patch === null) delete roomFloors[roomId];
+    else {
+      const previous = roomFloors[roomId] ?? r.finish;
+      roomFloors[roomId] = { floor: patch.floor ?? previous.floor, floorColor: patch.floorColor ?? previous.floorColor };
+    }
+    return { ...r, roomFloors };
+  });
+}

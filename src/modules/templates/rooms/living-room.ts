@@ -24,9 +24,11 @@ export const livingRoomTemplate: TemplateMeta = {
     addFurniture(p, 'sofa-l', { x: 340, y: 290 }, Math.PI);
     addFurniture(p, 'coffee-table', { x: 250, y: 220 }, 0);
     addFurniture(p, 'armchair', { x: 80, y: 270 }, 0);
-    addFurniture(p, 'bookshelf', { x: 460, y: 200 }, 0);
+    addFurniture(p, 'bookshelf', { x: 460, y: 100 }, 0);
     addFurniture(p, 'lamp-ceiling', { x: 250, y: 200 });
     addFurniture(p, 'lamp-floor', { x: 60, y: 350 });
+    addFurniture(p, 'floor-plant', { x: 150, y: 340 });
+    addFurniture(p, 'rug', { x: 290, y: 235 });
     recomputeRooms(p);
     return p;
   },

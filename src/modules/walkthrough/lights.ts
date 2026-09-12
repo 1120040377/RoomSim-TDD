@@ -39,19 +39,28 @@ function buildLightFor(f: Furniture, ceilingHeightCm: number): PointLight {
   if (f.type === 'lamp-ceiling') {
     const shadeRadius = (Math.min(f.size.width, f.size.depth) / 2) * 0.6;
     h = ceilingHeightCm - CEILING_LAMP_CORD_CM - shadeRadius;
+  } else if (f.type === 'lamp-table') {
+    h = (f.elevation ?? 0) + f.size.height * 0.70;
+    light.distance = 3;
   } else if (f.type === 'lamp-wall') {
     h = Math.max(0, ceilingHeightCm - 60);
   } else {
-    h = f.size.height;
+    h = f.size.height * 0.89;
   }
   light.position.set(f.position.x * CM_TO_M, h * CM_TO_M, f.position.y * CM_TO_M);
   (light.userData as Record<string, unknown>).furnitureId = f.id;
   const on = (f.runtimeState?.on as boolean | undefined) ?? true;
-  light.intensity = on ? DEFAULT_INTENSITY : 0;
+  setLightEnabled(light, on);
   return light;
 }
 
 export function toggleLight(light: PointLight): boolean {
-  light.intensity = light.intensity > 0 ? 0 : DEFAULT_INTENSITY;
-  return light.intensity > 0;
+  return setLightEnabled(light, light.intensity <= 0);
+}
+
+/** Zero intensity still occupies a shader light slot in Three r160. */
+export function setLightEnabled(light: PointLight, on: boolean): boolean {
+  light.intensity = on ? DEFAULT_INTENSITY : 0;
+  light.visible = on;
+  return on;
 }
