@@ -236,4 +236,5 @@ export function buildTailoredSectional(g: Group, w: number, d: number, h: number
   // Imported pillows have atlas-space baked normals; the draped blanket must
   // retain its own metre-space weave rather than share that pillow material.
   if(top>0.4)throwBlanket(g,w*0.16,top,-d/2+moduleDepth-0.012,1,
-    gr
+    green.userData.importedPillow?fabricMaterial(`#${green.color.getHexString()}`,40):green);
+}

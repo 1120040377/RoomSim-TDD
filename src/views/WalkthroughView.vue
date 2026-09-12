@@ -903,7 +903,7 @@ function performLifeAction(target:LifeTarget){
   if(target.action==='sit'||target.action==='rest'){
     const surface=(f.elevation??0)+(target.action==='sit'?45:52);
     if(viewMode.value==='walk')controller?.useFurniture(f.position.x/100,f.position.y/100,surface/100+(target.action==='sit'?personHeight.value*0.0045:0.18));
-    else thirdPerson.useFurniture(f.position,f.rotation,target.action==='sit'?'sit':'lie',surface);
+    else thirdPerson.useFurniture(f.position,f.rotation,target.action==='sit'?'sit':'lie',surface,g.userData.seatYaw??0);
     lifeStatus.value=target.action==='sit'?'已坐下；按方向键起身继续走动。':'正在躺下休息；按方向键起身。';return;
   }
   if(target.action==='light'){

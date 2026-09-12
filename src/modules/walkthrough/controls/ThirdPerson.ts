@@ -73,11 +73,11 @@ export class ThirdPerson {
   setPosition(p: Vec2) { this.avatar.group.position.set(p.x * 0.01, 0, p.y * 0.01); }
   setKind(kind:AvatarKind){this.stand();this.avatar.setKind(kind);this.setHeight(kind==='child'?120:170);this.resetCamera();}
   setObstacles(obstacles:OrientedBox[]){this.obstacles=obstacles;}
-  useFurniture(p:Vec2,rotation:number,pose:'sit'|'lie',surfaceHeight:number){
+  useFurniture(p:Vec2,rotation:number,pose:'sit'|'lie',surfaceHeight:number,seatYaw=0){
     if(!this.resting)this.returnPosition.copy(this.avatar.group.position);
     this.resting=true;this.keys.clear();this.avatar.pose(pose);
     this.avatar.group.position.set(p.x/100,pose==='sit'?surfaceHeight/100-this.avatar.hipHeight*this.height/170:surfaceHeight/100+0.12,p.y/100);
-    this.avatar.group.rotation.y=-rotation;this.resetCamera();
+    this.avatar.group.rotation.y=-rotation+(pose==='sit'?seatYaw:0);this.resetCamera();
   }
   stand(){if(!this.resting)return;this.avatar.group.position.copy(this.returnPosition);this.avatar.pose('stand');this.resting=false;}
   setHeight(cm: number) {
